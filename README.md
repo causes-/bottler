@@ -1,4 +1,0 @@
-bottler
-=======
-
-simple irc bot
