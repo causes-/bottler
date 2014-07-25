@@ -1,21 +1,34 @@
 #define _POSIX_SOURCE
-#define _BSD_SOURCE
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <stdarg.h>
+#include <string.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
 
-#define MAXLINE 4096
-
 char *host = "irc.quakenet.org";
 char *port = "6667";
 char *nick = "bottler";
-char *name = "Botanic Bottler";
+char *name = "bottler bot";
+
+void eprintf(const char *fmt, ...) {
+	va_list ap;
+	va_start(ap, fmt);
+	vfprintf(stderr, fmt, ap);
+	va_end(ap);
+	exit(EXIT_FAILURE);
+}
+
+char *skip(char *s, char c) {
+	while(*s != c && *s != '\0')
+		s++;
+	if(*s != '\0')
+		*s++ = '\0';
+	return s;
+}
 
 int dial(const char *host, const char *port) {
 	int fd;
@@ -40,7 +53,7 @@ int dial(const char *host, const char *port) {
 }
 
 int putfd(int fd, char *fmt, ...) {
-	char bufout[MAXLINE+1];
+	char bufout[BUFSIZ+1];
 	va_list ap;
 
 	va_start(ap, fmt);
@@ -48,73 +61,70 @@ int putfd(int fd, char *fmt, ...) {
 	va_end(ap);
 	strncat(bufout, "\r\n", sizeof bufout);
 
-	printf("%s", bufout);
+	printf("send:%s", bufout);
 	return send(fd, bufout, strlen(bufout), 0);
 }
 
 int getfd(int fd, char *bufin) {
 	int n;
 
-	n = recv(fd, bufin, MAXLINE, 0);
-	bufin[n] = '\0';
+	n = recv(fd, bufin, BUFSIZ, 0);
+	if (n != -1)
+		bufin[n] = '\0';
 	if (n > 0)
-		printf("%s", bufin);
+		printf("recv:%s", bufin);
 	return n;
-}
-
-char *skip(char *s, char c) {
-	while(*s != c && *s != '\0')
-		s++;
-	if(*s != '\0')
-		*s++ = '\0';
-	return s;
 }
 
 char *urltitle(char *url) {
 	int n;
-	int urlfd;
-	static char bufurl[MAXLINE+1];
-	char *hosturl;
+	int fd;
+	static char bufurl[BUFSIZ+1];
+	char *host;
 	char *page;
-	char *title;
 	char *useragent = "Mozilla/5.0 (X11; Linux x86_64; rv:30.0) Gecko/20100101 Firefox/30.0";
+	char *title;
 
-	hosturl = strdup(url);
-	page = skip(hosturl, '/');
+	host = strstr(url, "http://");
+	if (host)
+		host += 7;
+	else
+		host = url;
+	page = skip(host, '/');
 
-	urlfd = dial(hosturl, "80");
-	putfd(urlfd, "GET /%s HTTP/1.0\r\nHost: %s\r\nUser-Agent: %s\r\n\r\n",
-			page, hosturl, useragent);
-	free(hosturl);
+	fd = dial(host, "80");
+	if (fd == -1)
+		return NULL;
 
-	while (1) {
-		n = getfd(urlfd, bufurl);
-		if (n > 0) {
-			title = strstr(bufurl, "<title>");
-			if (title) {
-				skip(title, '\n');
-				title = skip(title, '>');
-				skip(title, '<');
-				return title;
-			} else
-				return NULL;
+	putfd(fd, "GET http://%s/%s/ HTTP/1.1\r\nHost: %s\r\nUser-Agent: %s\r\n\r\n",
+			host, page, host, useragent);
+
+	n = getfd(fd, bufurl);
+	if (n > 0) {
+		title = strstr(bufurl, "<title>");
+		if (title) {
+			title = skip(title, '>');
+			skip(title, '<');
+			close(fd);
+			return title;
 		}
 	}
+
+	close(fd);
+	return NULL;
 }
 
 int main(int argc, char *argv[]) {
 	int n;
 	int fd;
-	char bufin[MAXLINE+1];
+	char bufin[BUFSIZ+1];
 	char *line;
-	char *usr, *cmd, *par, *txt;
+	char *usr, *cmd, *chan, *msg;
 	char *url, *title;
 
 	fd = dial(host, port);
-	if (fd == -1) {
-		fprintf(stderr, "failed to connect %s:%s\n", host, port);
-		return EXIT_FAILURE;
-	}
+	if (fd == -1)
+		eprintf("failed to connect %s:%s\n", host, port);
 
 	putfd(fd, "NICK %s", nick);
 	putfd(fd, "USER %s 0 * :%s", nick, name);
@@ -124,6 +134,7 @@ int main(int argc, char *argv[]) {
 		if (n < 1)
 			continue;
 		for (line = strtok(bufin, "\n"); line; line = strtok(NULL, "\n")) {
+			/* parse received line */
 			cmd = line;
 			skip(cmd, '\r');
 			usr = host;
@@ -132,46 +143,45 @@ int main(int argc, char *argv[]) {
 				cmd = skip(usr, ' ');
 				skip(usr, '!');
 			}
-			par = skip(cmd, ' ');
-			txt = skip(par, ':');
-			skip(par, ' ');
+			chan = skip(cmd, ' ');
+			msg = skip(chan, ':');
+			skip(chan, ' ');
 
 			if(!strcmp("PING", cmd)) {
-				putfd(fd, "PONG %s", txt);
+				putfd(fd, "PONG %s", msg);
 				continue;
 			}
 
-			/* commands */
-			if (txt[0] == '!') {
-				if (txt[1] == 'h')
-					putfd(fd, "PRIVMSG %s :Usage: !h help, !p part, !j join",
-							par[0] == '#' ? par : usr);
-				else if (txt[1] == 'p' && par[0] == '#')
-					putfd(fd, "PART %s", par);
-				else if (txt[1] == 'j' && txt[3] == '#') {
-					putfd(fd, "JOIN %s", txt+3);
+			if (msg[0] == '!') {
+				/* bot commands */
+				if (msg[1] == 'p' && chan[0] == '#')
+					putfd(fd, "PART %s", chan);
+				else if (msg[1] == 'j' && msg[3] == '#') {
+					putfd(fd, "JOIN %s", msg+3);
 					putfd(fd, "PRIVMSG %s :I was invited by %s. Try !h to see my commands.",
-							txt+3, usr);
+							msg+3, usr);
+				} else {
+					putfd(fd, "PRIVMSG %s :Usage: !h help, !p part, !j join",
+							chan[0] == '#' ? chan : usr);
+				}
+			} else if (chan[0] == '#') {
+				/* channel messages */
+				url = strstr(msg, "www.");
+				if (!url)
+					url = strstr(msg, "http://");
+				if (url) {
+					skip(url, ' ');	
+					title = urltitle(url);
+					if (title)
+						putfd(fd, "PRIVMSG %s :%s", chan, title);
+				}
+
+				if (!strcmp("1/0", msg)) {
+					putfd(fd, "QUIT :division by zero");
+					close(fd);
+					return EXIT_SUCCESS;
 				}
 			}
-
-			/* fetch url titles */
-			if (par[0] == '#') {
-				if ((url = strstr(txt, "www.")) == 0)
-					if ((url = strstr(txt, "http://")) != 0)
-						url += 7;
-			}
-			if (url) {
-				skip(url, ' ');
-				if ((title = urltitle(url)) != 0)
-					putfd(fd, "PRIVMSG %s :title:%s", par, title);
-			}
-		}
-
-		if (!strcmp("1/0", txt) && par[0] == '#') {
-			putfd(fd, "QUIT :division by zero");
-			close(fd);
-			return EXIT_SUCCESS;
 		}
 	}
 }
