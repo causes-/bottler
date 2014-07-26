@@ -9,8 +9,4 @@ Please change these values in bottler.c before trying:
 char *host = "irc.quakenet.org";
 char *port = "6667";
 char *nick = "bottler";
-char *name = "Botanic Bottler";
-
-Acknowledgements
-----------------
-I borrowed dial() and skip() from http://git.suckless.org/sic
+char *name = "bottler bot";

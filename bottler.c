@@ -1,4 +1,5 @@
 #define _POSIX_SOURCE
+#define _BSD_SOURCE
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,15 +23,45 @@ void eprintf(const char *fmt, ...) {
 	exit(EXIT_FAILURE);
 }
 
-char *skip(char *s, char c) {
-	while(*s != c && *s != '\0')
+void *emalloc(size_t size) {
+	void *p;
+	p = malloc(size);
+	if (!p)
+		eprintf("out of memory\n");
+	return p;
+}
+
+char *splitstr(char *s, char c) {
+	while (*s != c && *s != '\0')
 		s++;
-	if(*s != '\0')
-		*s++ = '\0';
+	if (*s != '\0')
+		*s = '\0';
+	if (*(s-1) == ' ')
+		*(s-1) = '\0';
+	return ++s;
+}
+
+char *skipstr(char *s, char *c) {
+	while (*c != '\0')
+		if (*s == *c++)
+			s++;
 	return s;
 }
 
-int dial(const char *host, const char *port) {
+char *splitline(char **s) {
+	char *begin, *end;
+	end = begin = *s;
+	while (*end != '\n' && *end != '\r' && *end != '\0')
+		end++;
+	while (*end == '\n' || *end == '\r' || *end == ' ')
+		*end++ = '\0';
+	if (begin == end)
+		return NULL;
+	*s = end;
+	return begin;
+}
+
+int contohost(const char *host, const char *port) {
 	int fd;
 	struct addrinfo hints, *res, *r;
 
@@ -53,129 +84,113 @@ int dial(const char *host, const char *port) {
 }
 
 int putfd(int fd, char *fmt, ...) {
-	char bufout[BUFSIZ+1];
+	int i;
+	char *bufout = emalloc(BUFSIZ+1);
 	va_list ap;
-
 	va_start(ap, fmt);
-	vsnprintf(bufout, sizeof bufout, fmt, ap);
+	vsnprintf(bufout, BUFSIZ+1, fmt, ap);
 	va_end(ap);
-	strncat(bufout, "\r\n", sizeof bufout);
+	strncat(bufout, "\r\n", BUFSIZ+1);
 
 	printf("send:%s", bufout);
-	return send(fd, bufout, strlen(bufout), 0);
+	i = send(fd, bufout, strlen(bufout), 0);
+	free(bufout);
+	return i;
 }
 
 int getfd(int fd, char *bufin) {
-	int n;
-
-	n = recv(fd, bufin, BUFSIZ, 0);
-	if (n != -1)
-		bufin[n] = '\0';
-	if (n > 0)
+	int i;
+	i = recv(fd, bufin, BUFSIZ, 0);
+	if (i != -1)
+		bufin[i] = '\0';
+	if (i > 0)
 		printf("recv:%s", bufin);
-	return n;
+	return i;
 }
 
 char *urltitle(char *url) {
-	int n;
-	int fd;
-	static char bufurl[BUFSIZ+1];
-	char *host;
-	char *page;
-	char *useragent = "Mozilla/5.0 (X11; Linux x86_64; rv:30.0) Gecko/20100101 Firefox/30.0";
-	char *title;
+	int i, fd;
+	char *bufurl;
+	char *host, *page, *useragent, *title = NULL;
 
-	host = strstr(url, "http://");
-	if (host)
-		host += 7;
-	else
-		host = url;
-	page = skip(host, '/');
+	host = skipstr(url, "http://");
+	page = splitstr(host, '/');
 
-	fd = dial(host, "80");
+	fd = contohost(host, "80");
 	if (fd == -1)
 		return NULL;
 
+	useragent = "Mozilla/5.0 (X11; Linux x86_64; rv:30.0) Gecko/20100101 Firefox/30.0";
 	putfd(fd, "GET http://%s/%s/ HTTP/1.1\r\nHost: %s\r\nUser-Agent: %s\r\n\r\n",
 			host, page, host, useragent);
 
-	n = getfd(fd, bufurl);
-	if (n > 0) {
+	bufurl = malloc(BUFSIZ+1);
+	i = getfd(fd, bufurl);
+	if (i > 0) {
 		title = strstr(bufurl, "<title>");
 		if (title) {
-			title = skip(title, '>');
-			skip(title, '<');
-			close(fd);
-			return title;
+			title += 7;
+			splitstr(title, '<');
+			title = strdup(title);
 		}
 	}
-
+	free(bufurl);
 	close(fd);
-	return NULL;
+	return title;
 }
 
 int main(int argc, char *argv[]) {
-	int n;
-	int fd;
-	char bufin[BUFSIZ+1];
-	char *line;
+	int i, fd;
+	char *bufin;
 	char *usr, *cmd, *chan, *msg;
 	char *url, *title;
 
-	fd = dial(host, port);
+	fd = contohost(host, port);
 	if (fd == -1)
 		eprintf("failed to connect %s:%s\n", host, port);
 
 	putfd(fd, "NICK %s", nick);
 	putfd(fd, "USER %s 0 * :%s", nick, name);
 
+	bufin = emalloc(BUFSIZ+1);
+
 	while(1) {
-		n = getfd(fd, bufin);
-		if (n < 1)
+		i = getfd(fd, bufin);
+		if (i < 1)
 			continue;
-		for (line = strtok(bufin, "\n"); line; line = strtok(NULL, "\n")) {
-			/* parse received line */
-			cmd = line;
-			skip(cmd, '\r');
+		while ((cmd = splitline(&bufin)) != NULL) {
 			usr = host;
 			if (cmd[0] == ':') {
 				usr = cmd+1;
-				cmd = skip(usr, ' ');
-				skip(usr, '!');
+				cmd = splitstr(usr, ' ');
+				splitstr(usr, '!');
 			}
-			chan = skip(cmd, ' ');
-			msg = skip(chan, ':');
-			skip(chan, ' ');
+			chan = splitstr(cmd, ' ');
+			msg = splitstr(chan, ':');
 
-			if(!strcmp("PING", cmd)) {
+			if(!strcmp("PING", cmd))
 				putfd(fd, "PONG %s", msg);
-				continue;
-			}
-
-			if (msg[0] == '!') {
-				/* bot commands */
+			else if (msg[0] == '!') {
 				if (msg[1] == 'p' && chan[0] == '#')
 					putfd(fd, "PART %s", chan);
 				else if (msg[1] == 'j' && msg[3] == '#') {
 					putfd(fd, "JOIN %s", msg+3);
 					putfd(fd, "PRIVMSG %s :I was invited by %s. Try !h to see my commands.",
 							msg+3, usr);
-				} else {
+				} else
 					putfd(fd, "PRIVMSG %s :Usage: !h help, !p part, !j join",
 							chan[0] == '#' ? chan : usr);
-				}
 			} else if (chan[0] == '#') {
-				/* channel messages */
-				url = strstr(msg, "www.");
-				if (!url)
+				if (!(url = strstr(msg, "www.")))
 					url = strstr(msg, "http://");
 				if (url) {
-					skip(url, ' ');	
+					splitstr(url, ' ');
 					title = urltitle(url);
-					if (title)
+					if (title) {
 						putfd(fd, "PRIVMSG %s :%s", chan, title);
+						free(title);
+					}
 				}
-
 				if (!strcmp("1/0", msg)) {
 					putfd(fd, "QUIT :division by zero");
 					close(fd);
