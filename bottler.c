@@ -1,4 +1,5 @@
 #define _POSIX_SOURCE
+#define _GNU_SOURCE
 #define _BSD_SOURCE
 
 #include <stdio.h>
@@ -9,6 +10,12 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
+
+#define VERBOSE	(1 << 0)
+#define CMDS	(1 << 1)
+#define RECV	(1 << 2)
+#define SEND	(1 << 3)
+#define URL		(1 << 4)
 
 char *host = "irc.quakenet.org";
 char *port = "6667";
@@ -31,11 +38,17 @@ void *emalloc(size_t size) {
 	return p;
 }
 
+void *erealloc(void *p, size_t size) {
+	void *r = realloc(p, size);
+	if (!r)
+		eprintf("out of memory\n");
+	return r;
+}
+
 char *splitstr(char *s, char c) {
 	while (*s != c && *s != '\0')
 		s++;
-	if (*s != '\0')
-		*s = '\0';
+	*s = '\0';
 	if (*(s-1) == ' ')
 		*(s-1) = '\0';
 	return ++s;
@@ -51,7 +64,6 @@ char *skipstr(char *s, char *c) {
 char *splitline(char **s) {
 	char *b = *s;
 	char *e = *s;
-	b = e = *s;
 	while (*e != '\n' && *e != '\r' && *e != '\0')
 		e++;
 	if (b == e)
@@ -84,7 +96,7 @@ int contohost(const char *host, const char *port) {
 	return fd;
 }
 
-int putfd(int fd, char *fmt, ...) {
+int putfd(int fd, int opts, char *fmt, ...) {
 	int i;
 	char *bufout = emalloc(BUFSIZ+1);
 	va_list ap;
@@ -93,18 +105,19 @@ int putfd(int fd, char *fmt, ...) {
 	va_end(ap);
 	strncat(bufout, "\r\n", BUFSIZ+1);
 
-	printf("send:%s", bufout);
+	if (opts & RECV)
+		printf("send:%s", bufout);
 	i = send(fd, bufout, strlen(bufout), 0);
 	free(bufout);
 	return i;
 }
 
-int getfd(int fd, char *bufin) {
+int getfd(int fd, int opts, char *bufin) {
 	int i;
 	i = recv(fd, bufin, BUFSIZ, 0);
 	if (i != -1)
 		bufin[i] = '\0';
-	if (i > 0)
+	if (opts & RECV && i)
 		printf("recv:%s", bufin);
 	return i;
 }
@@ -114,10 +127,10 @@ char *xmlstr(char *s, char *t) {
 	char *e = emalloc(strlen(t)+4);
 	sprintf(b, "<%s>", t);
 	sprintf(e, "</%s>", t);
-	s = strstr(s, b);
+	s = strcasestr(s, b);
 	if (s) {
 		s = skipstr(s, b);
-		t = strstr(s, e);
+		t = strcasestr(s, e);
 		if (t) {
 			*t = '\0';
 			s = strdup(s);
@@ -129,8 +142,8 @@ char *xmlstr(char *s, char *t) {
 	return s;
 }
 
-char *urltitle(char *url) {
-	int i, fd;
+char *urltitle(char *url, int opts) {
+	int fd;
 	char *bufurl;
 	char *host, *page, *useragent, *title = NULL;
 
@@ -142,13 +155,12 @@ char *urltitle(char *url) {
 		return NULL;
 
 	useragent = "Mozilla/5.0 (X11; Linux x86_64; rv:30.0) Gecko/20100101 Firefox/30.0";
-	putfd(fd, "GET http://%s/%s HTTP/1.1\r\nHost: %s\r\nUser-Agent: %s\r\n",
+	putfd(fd, opts, "GET http://%s/%s HTTP/1.1\r\nHost: %s\r\nUser-Agent: %s\r\n",
 			host, page, host, useragent);
 
-	bufurl = malloc(BUFSIZ+1);
-	i = getfd(fd, bufurl);
-	if (i > 0)
-		title = xmlstr(bufurl, "title");
+	bufurl = emalloc(BUFSIZ+1);
+	getfd(fd, opts, bufurl);
+	title = xmlstr(bufurl, "title");
 	free(bufurl);
 	close(fd);
 	return title;
@@ -166,21 +178,66 @@ char *isurl(char *url) {
 
 int main(int argc, char *argv[]) {
 	int i, fd;
+	int opts = 0;
 	char *bufin;
 	char *usr, *cmd, *chan, *msg;
 	char *url, *title;
+
+	for (i = 1; i < argc; i++) {
+		if (!strcmp("-v", argv[i]))
+			opts |= CMDS | SEND | RECV;
+		else if (!strcmp("-c", argv[i]))
+			opts |= CMDS;
+		else if (!strcmp("-i", argv[i]))
+			opts |= RECV;
+		else if (!strcmp("-o", argv[i]))
+			opts |= SEND;
+		else if (!strcmp("-u", argv[i]))
+			opts |= URL;
+		else if (argv[i+1] == NULL || argv[i+1][0] == '-')
+			eprintf("usage: %s [options]\n"
+					"-h               help\n"
+					"-v               verbose\n"
+					"-c               print received commands\n"
+					"-i               print received data\n"
+					"-o               print sent data\n"
+					"-u               disable urltitle\n"
+					"-s <host:port>   server hostname\n"
+					"-n <nick> [name] bot nickname and name\n", argv[0]);
+		else if (!strcmp("-s", argv[i])) {
+			host = argv[++i];
+			if (strlen(host) != strcspn(host, ":"))
+				port = splitstr(host, ':');
+		} else if (!strcmp("-n", argv[i])) {
+			nick = argv[++i];
+			while (argv[i+1] != NULL && argv[i+1][0] != '-') {
+				if (!strcmp("-n", argv[i]))
+					name = argv[++i];
+				else if (!strcmp("-n", argv[i-1])) {
+					name = emalloc(strlen(argv[i]) + strlen(argv[i+1]) + 2);
+					strcpy(name, argv[i]);
+					strcat(name, " ");
+					strcat(name, argv[++i]);
+				} else {
+					erealloc(name, strlen(name) + strlen(argv[i+1]) + 2);
+					strcat(name, " ");
+					strcat(name, argv[++i]);
+				}
+			}
+		}
+	}
 
 	fd = contohost(host, port);
 	if (fd == -1)
 		eprintf("failed to connect %s:%s\n", host, port);
 
-	putfd(fd, "NICK %s", nick);
-	putfd(fd, "USER %s 0 * :%s", nick, name);
+	putfd(fd, opts, "NICK %s", nick);
+	putfd(fd, opts, "USER %s 0 * :%s", nick, name);
 
 	bufin = emalloc(BUFSIZ+1);
 
 	while(1) {
-		i = getfd(fd, bufin);
+		i = getfd(fd, opts, bufin);
 		if (i < 1)
 			continue;
 		while ((cmd = splitline(&bufin)) != NULL) {
@@ -192,30 +249,33 @@ int main(int argc, char *argv[]) {
 			}
 			chan = splitstr(cmd, ' ');
 			msg = splitstr(chan, ':');
+			if (opts & CMDS)
+				printf("usr:%s, cmd:%s, chan:%s, msg:%s\n", usr, cmd, chan, msg);
 
 			if(!strcmp("PING", cmd))
-				putfd(fd, "PONG %s", msg);
+				putfd(fd, opts, "PONG %s", msg);
 			else if (msg[0] == '!') {
 				if (msg[1] == 'p' && chan[0] == '#')
-					putfd(fd, "PART %s", chan);
+					putfd(fd, opts, "PART %s", chan);
 				else if (msg[1] == 'j' && msg[3] == '#') {
-					putfd(fd, "JOIN %s", msg+3);
-					putfd(fd, "PRIVMSG %s :I was invited by %s. Try !h to see my commands.",
+					putfd(fd, opts, "JOIN %s", msg+3);
+					putfd(fd, opts, "PRIVMSG %s :I was invited by %s. Try !h to see my commands.",
 							msg+3, usr);
 				} else
-					putfd(fd, "PRIVMSG %s :Usage: !h help, !p part, !j join",
+					putfd(fd, opts, "PRIVMSG %s :Usage: !h help, !p part, !j join",
 							chan[0] == '#' ? chan : usr);
 			} else if (chan[0] == '#') {
-				url = isurl(msg);
-				if (url) {
-					title = urltitle(url);
-					if (title) {
-						putfd(fd, "PRIVMSG %s :%s", chan, title);
-						free(title);
+				if (opts & URL) {
+					url = isurl(msg);
+					if (url) {
+						title = urltitle(url, opts);
+						if (title) {
+							putfd(fd, opts, "PRIVMSG %s :%s", chan, title);
+							free(title);
+						}
 					}
-				}
-				if (!strcmp("1/0", msg)) {
-					putfd(fd, "QUIT :division by zero");
+				} else if (!strcmp("1/0", msg)) {
+					putfd(fd, opts, "QUIT :division by zero");
 					close(fd);
 					return EXIT_SUCCESS;
 				}
