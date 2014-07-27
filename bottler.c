@@ -49,16 +49,17 @@ char *skipstr(char *s, char *c) {
 }
 
 char *splitline(char **s) {
-	char *begin, *end;
-	end = begin = *s;
-	while (*end != '\n' && *end != '\r' && *end != '\0')
-		end++;
-	while (*end == '\n' || *end == '\r' || *end == ' ')
-		*end++ = '\0';
-	if (begin == end)
+	char *b = *s;
+	char *e = *s;
+	b = e = *s;
+	while (*e != '\n' && *e != '\r' && *e != '\0')
+		e++;
+	if (b == e)
 		return NULL;
-	*s = end;
-	return begin;
+	while (*e == '\n' || *e == '\r' || *e == ' ')
+		*e++ = '\0';
+	*s = e;
+	return b;
 }
 
 int contohost(const char *host, const char *port) {
@@ -108,6 +109,26 @@ int getfd(int fd, char *bufin) {
 	return i;
 }
 
+char *xmlstr(char *s, char *t) {
+	char *b = emalloc(strlen(t)+3);
+	char *e = emalloc(strlen(t)+4);
+	sprintf(b, "<%s>", t);
+	sprintf(e, "</%s>", t);
+	s = strstr(s, b);
+	if (s) {
+		s = skipstr(s, b);
+		t = strstr(s, e);
+		if (t) {
+			*t = '\0';
+			s = strdup(s);
+		} else
+			s = NULL;
+	}
+	free(b);
+	free(e);
+	return s;
+}
+
 char *urltitle(char *url) {
 	int i, fd;
 	char *bufurl;
@@ -121,22 +142,26 @@ char *urltitle(char *url) {
 		return NULL;
 
 	useragent = "Mozilla/5.0 (X11; Linux x86_64; rv:30.0) Gecko/20100101 Firefox/30.0";
-	putfd(fd, "GET http://%s/%s/ HTTP/1.1\r\nHost: %s\r\nUser-Agent: %s\r\n\r\n",
+	putfd(fd, "GET http://%s/%s HTTP/1.1\r\nHost: %s\r\nUser-Agent: %s\r\n",
 			host, page, host, useragent);
 
 	bufurl = malloc(BUFSIZ+1);
 	i = getfd(fd, bufurl);
-	if (i > 0) {
-		title = strstr(bufurl, "<title>");
-		if (title) {
-			title += 7;
-			splitstr(title, '<');
-			title = strdup(title);
-		}
-	}
+	if (i > 0)
+		title = xmlstr(bufurl, "title");
 	free(bufurl);
 	close(fd);
 	return title;
+}
+
+char *isurl(char *url) {
+	char *r;
+	r = strstr(url, "http://");
+	if (!r)
+		r = strstr(url, "www.");
+	if (r)
+		splitstr(r, ' ');
+	return r;
 }
 
 int main(int argc, char *argv[]) {
@@ -181,10 +206,8 @@ int main(int argc, char *argv[]) {
 					putfd(fd, "PRIVMSG %s :Usage: !h help, !p part, !j join",
 							chan[0] == '#' ? chan : usr);
 			} else if (chan[0] == '#') {
-				if (!(url = strstr(msg, "www.")))
-					url = strstr(msg, "http://");
+				url = isurl(msg);
 				if (url) {
-					splitstr(url, ' ');
 					title = urltitle(url);
 					if (title) {
 						putfd(fd, "PRIVMSG %s :%s", chan, title);
