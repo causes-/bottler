@@ -6,21 +6,31 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
+#include <signal.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
 
-#define VERBOSE	(1 << 0)
-#define CMDS	(1 << 1)
-#define RECV	(1 << 2)
-#define SEND	(1 << 3)
-#define URL		(1 << 4)
+static sig_atomic_t quit;
 
 char *host = "irc.quakenet.org";
 char *port = "6667";
 char *nick = "bottler";
 char *name = "bottler bot";
+
+void sighandler(int sig) {
+	if (sig == SIGINT) {
+		if (quit == 1) {
+			puts("terminating immediately");
+			exit(0);
+		} else {
+			quit = 1;
+			puts("closing connections");
+		}
+		signal(SIGINT, sighandler);
+	}
+}
 
 void eprintf(const char *fmt, ...) {
 	va_list ap;
@@ -45,20 +55,22 @@ void *erealloc(void *p, size_t size) {
 	return r;
 }
 
+void *estrdup(void *p) {
+	void *r = strdup(p);
+	if (!r)
+		eprintf("out of memory\n");
+	return r;
+}
+
 char *splitstr(char *s, char c) {
 	while (*s != c && *s != '\0')
 		s++;
+	if (*s == '\0')
+		return "";
 	*s = '\0';
 	if (*(s-1) == ' ')
 		*(s-1) = '\0';
-	return ++s;
-}
-
-char *skipstr(char *s, char *c) {
-	while (*c != '\0')
-		if (*s == *c++)
-			s++;
-	return s;
+	return s+1;
 }
 
 char *splitline(char **s) {
@@ -96,7 +108,7 @@ int contohost(const char *host, const char *port) {
 	return fd;
 }
 
-int putfd(int fd, int opts, char *fmt, ...) {
+int putfd(int fd, char *fmt, ...) {
 	int i;
 	char *bufout = emalloc(BUFSIZ+1);
 	va_list ap;
@@ -105,19 +117,18 @@ int putfd(int fd, int opts, char *fmt, ...) {
 	va_end(ap);
 	strncat(bufout, "\r\n", BUFSIZ+1);
 
-	if (opts & RECV)
-		printf("send:%s", bufout);
+	printf("send:%s", bufout);
 	i = send(fd, bufout, strlen(bufout), 0);
 	free(bufout);
 	return i;
 }
 
-int getfd(int fd, int opts, char *bufin) {
+int getfd(int fd, char *bufin) {
 	int i;
 	i = recv(fd, bufin, BUFSIZ, 0);
 	if (i != -1)
 		bufin[i] = '\0';
-	if (opts & RECV && i)
+	if (i)
 		printf("recv:%s", bufin);
 	return i;
 }
@@ -129,11 +140,11 @@ char *xmlstr(char *s, char *t) {
 	sprintf(e, "</%s>", t);
 	s = strcasestr(s, b);
 	if (s) {
-		s = skipstr(s, b);
+		s += strlen(b);
 		t = strcasestr(s, e);
 		if (t) {
 			*t = '\0';
-			s = strdup(s);
+			s = estrdup(s);
 		} else
 			s = NULL;
 	}
@@ -142,87 +153,67 @@ char *xmlstr(char *s, char *t) {
 	return s;
 }
 
-char *urltitle(char *url, int opts) {
+char *urltitle(char *url) {
 	int fd;
 	char *bufurl;
-	char *host, *page, *useragent, *title = NULL;
+	char *host, *page, *title = NULL;
 
-	host = skipstr(url, "http://");
+	host = url;
+	if (!strncmp("http://", host, 7))
+		host += 7;
 	page = splitstr(host, '/');
-
 	fd = contohost(host, "80");
 	if (fd == -1)
 		return NULL;
 
-	useragent = "Mozilla/5.0 (X11; Linux x86_64; rv:30.0) Gecko/20100101 Firefox/30.0";
-	putfd(fd, opts, "GET http://%s/%s HTTP/1.1\r\nHost: %s\r\nUser-Agent: %s\r\n",
-			host, page, host, useragent);
-
+	putfd(fd, "GET http://%s/%s HTTP/1.1\r\n"
+			"Host: %s\r\n"
+			"User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:30.0) Gecko/20100101 Firefox/30.0\r\n"
+			, host, page, host);
 	bufurl = emalloc(BUFSIZ+1);
-	getfd(fd, opts, bufurl);
-	title = xmlstr(bufurl, "title");
+	while (getfd(fd, bufurl) && !title)
+		title = xmlstr(bufurl, "title");
 	free(bufurl);
 	close(fd);
 	return title;
 }
 
-char *isurl(char *url) {
-	char *r;
-	r = strstr(url, "http://");
-	if (!r)
-		r = strstr(url, "www.");
-	if (r)
-		splitstr(r, ' ');
-	return r;
-}
-
 int main(int argc, char *argv[]) {
 	int i, fd;
-	int opts = 0;
 	char *bufin;
-	char *usr, *cmd, *chan, *msg;
+	char *usr, *cmd, *par, *msg;
 	char *url, *title;
 
 	for (i = 1; i < argc; i++) {
-		if (!strcmp("-v", argv[i]))
-			opts |= CMDS | SEND | RECV;
-		else if (!strcmp("-c", argv[i]))
-			opts |= CMDS;
-		else if (!strcmp("-i", argv[i]))
-			opts |= RECV;
-		else if (!strcmp("-o", argv[i]))
-			opts |= SEND;
-		else if (!strcmp("-u", argv[i]))
-			opts |= URL;
-		else if (argv[i+1] == NULL || argv[i+1][0] == '-')
+		if (!strcmp("-d", argv[i])) {
+			if (daemon(1,0) != 0)
+				eprintf("failed to daemonize");
+		} else if (argv[i+1] == NULL || argv[i+1][0] == '-') {
 			eprintf("usage: %s [options]\n"
+					"\n"
 					"-h               help\n"
-					"-v               verbose\n"
-					"-c               print received commands\n"
-					"-i               print received data\n"
-					"-o               print sent data\n"
-					"-u               disable urltitle\n"
+					"-d               run as daemon\n"
 					"-s <host:port>   server hostname\n"
-					"-n <nick> [name] bot nickname and name\n", argv[0]);
-		else if (!strcmp("-s", argv[i])) {
+					"-n <nick> [name] bot nickname and name\n"
+					, argv[0]);
+		} else if (!strcmp("-s", argv[i])) {
 			host = argv[++i];
 			if (strlen(host) != strcspn(host, ":"))
 				port = splitstr(host, ':');
 		} else if (!strcmp("-n", argv[i])) {
 			nick = argv[++i];
+			if (argv[i+1] != NULL && argv[i+1][0] != '-')
+				name = argv[++i];
+			if (argv[i+1] != NULL && argv[i+1][0] != '-') {
+				name = emalloc(strlen(argv[i]) + strlen(argv[i+1]) + 2);
+				strcpy(name, argv[i]);
+				strcat(name, " ");
+				strcat(name, argv[++i]);
+			}
 			while (argv[i+1] != NULL && argv[i+1][0] != '-') {
-				if (!strcmp("-n", argv[i]))
-					name = argv[++i];
-				else if (!strcmp("-n", argv[i-1])) {
-					name = emalloc(strlen(argv[i]) + strlen(argv[i+1]) + 2);
-					strcpy(name, argv[i]);
-					strcat(name, " ");
-					strcat(name, argv[++i]);
-				} else {
-					erealloc(name, strlen(name) + strlen(argv[i+1]) + 2);
-					strcat(name, " ");
-					strcat(name, argv[++i]);
-				}
+				erealloc(name, strlen(name) + strlen(argv[i+1]) + 2);
+				strcat(name, " ");
+				strcat(name, argv[++i]);
 			}
 		}
 	}
@@ -230,15 +221,15 @@ int main(int argc, char *argv[]) {
 	fd = contohost(host, port);
 	if (fd == -1)
 		eprintf("failed to connect %s:%s\n", host, port);
-
-	putfd(fd, opts, "NICK %s", nick);
-	putfd(fd, opts, "USER %s 0 * :%s", nick, name);
+	putfd(fd, "NICK %s", nick);
+	putfd(fd, "USER %s 0 * :%s", nick, name);
 
 	bufin = emalloc(BUFSIZ+1);
+	signal(SIGINT, sighandler);
 
-	while(1) {
-		i = getfd(fd, opts, bufin);
-		if (i < 1)
+	while(!quit) {
+		i = getfd(fd, bufin);
+		if (!i)
 			continue;
 		while ((cmd = splitline(&bufin)) != NULL) {
 			usr = host;
@@ -247,39 +238,36 @@ int main(int argc, char *argv[]) {
 				cmd = splitstr(usr, ' ');
 				splitstr(usr, '!');
 			}
-			chan = splitstr(cmd, ' ');
-			msg = splitstr(chan, ':');
-			if (opts & CMDS)
-				printf("usr:%s, cmd:%s, chan:%s, msg:%s\n", usr, cmd, chan, msg);
+			par = splitstr(cmd, ' ');
+			msg = splitstr(par, ':');
 
 			if(!strcmp("PING", cmd))
-				putfd(fd, opts, "PONG %s", msg);
-			else if (msg[0] == '!') {
-				if (msg[1] == 'p' && chan[0] == '#')
-					putfd(fd, opts, "PART %s", chan);
-				else if (msg[1] == 'j' && msg[3] == '#') {
-					putfd(fd, opts, "JOIN %s", msg+3);
-					putfd(fd, opts, "PRIVMSG %s :I was invited by %s. Try !h to see my commands.",
-							msg+3, usr);
-				} else
-					putfd(fd, opts, "PRIVMSG %s :Usage: !h help, !p part, !j join",
-							chan[0] == '#' ? chan : usr);
-			} else if (chan[0] == '#') {
-				if (opts & URL) {
-					url = isurl(msg);
-					if (url) {
-						title = urltitle(url, opts);
-						if (title) {
-							putfd(fd, opts, "PRIVMSG %s :%s", chan, title);
-							free(title);
-						}
+				putfd(fd, "PONG %s", msg);
+			else if (!strncmp("!p ", msg, 3))
+				putfd(fd, "PART %s", par);
+			else if (!strncmp("!j #", msg, 4)) {
+				putfd(fd, "JOIN %s", msg+3);
+				putfd(fd, "PRIVMSG %s :I was invited by %s. Try !h to see my commands.",
+						msg+3, usr);
+			} else if (!strncmp("!", msg, 1)) {
+				putfd(fd, "PRIVMSG %s :Usage: !h help, !p part, !j join, !a auth, !q quit",
+						par[0] == '#' ? par : usr);
+			} else if (!strncmp("#", par, 1)) {
+				url = strstr(msg, "http://");
+				if (!url)
+					url = strstr(msg, "www.");
+				if (url) {
+					splitstr(url, ' ');
+					title = urltitle(url);
+					if (title) {
+						putfd(fd, "PRIVMSG %s :%s", par, title);
+						free(title);
 					}
-				} else if (!strcmp("1/0", msg)) {
-					putfd(fd, opts, "QUIT :division by zero");
-					close(fd);
-					return EXIT_SUCCESS;
 				}
 			}
 		}
 	}
+	putfd(fd, "QUIT");
+	close(fd);
+	return EXIT_SUCCESS;
 }
