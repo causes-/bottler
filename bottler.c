@@ -1,6 +1,4 @@
-#define _POSIX_SOURCE
 #define _GNU_SOURCE
-#define _BSD_SOURCE
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,7 +10,9 @@
 #include <sys/socket.h>
 #include <netdb.h>
 
-struct command {
+#define BUF 4096
+
+struct cmd {
 	char *nick;
 	char *host;
 	char *cmd;
@@ -20,15 +20,29 @@ struct command {
 	char *msg;
 };
 
-static sig_atomic_t quit;
-static sig_atomic_t dflag;
+struct cfg {
+	char *server;
+	char *port;
+	char *nick;
+	char *name;
+	char *admin;
+	char *config;
+};
 
-char *host = "irc.server.org";
-char *port = "6667";
-char *nick = "bottler";
-char *name = "bottler bot";
-char *admin = "~nick@192-0-2-131.hostname.net";
-char *config;
+static sig_atomic_t reload;
+static sig_atomic_t quit;
+
+void sighandler(int sig) {
+	switch (sig) {
+	case SIGHUP:
+		reload = 1;
+		break;
+	case SIGINT:
+	case SIGTERM:
+		quit = 1;
+		break;
+	}
+}
 
 void eprintf(const char *fmt, ...) {
 	va_list ap;
@@ -38,30 +52,11 @@ void eprintf(const char *fmt, ...) {
 	exit(EXIT_FAILURE);
 }
 
-void sighandler(int sig) {
-	if (sig == SIGINT) {
-		if (quit == 1)
-			eprintf("terminating immediately");
-		else {
-			puts("closing connections");
-			quit = 1;
-		}
-		signal(SIGINT, sighandler);
-	}
-}
-
 void *emalloc(size_t size) {
 	void *p = malloc(size);
 	if (!p)
 		eprintf("out of memory\n");
 	return p;
-}
-
-void *erealloc(void *p, size_t size) {
-	void *r = realloc(p, size);
-	if (!r)
-		eprintf("out of memory\n");
-	return r;
 }
 
 void *estrdup(void *p) {
@@ -77,9 +72,18 @@ char *splitstr(char *s, char c) {
 	if (*s == '\0')
 		return "";
 	*s = '\0';
-	if (*(s-1) == ' ')
-		*(s-1) = '\0';
-	return s+1;
+	return ++s;
+}
+
+char *skipstr(char *s, char *t) {
+	char *p;
+	p = strstr(s, t);
+	if (p) {
+		p += strlen(t);
+		if (*p == '\0' || strlen(p) < 3)
+			p = NULL;
+	}
+	return p;
 }
 
 char *splitline(char **s) {
@@ -89,56 +93,59 @@ char *splitline(char **s) {
 		e++;
 	if (b == e)
 		return NULL;
-	while (*e == '\n' || *e == '\r' || *e == ' ')
-		*e++ = '\0';
+	if (*e != '\0') {
+		while (*e == '\n' || *e == '\r' || *e == ' ')
+			*e++ = '\0';
+	}
 	*s = e;
 	return b;
 }
 
-int readconfig(void) {
+int loadconfig(struct cfg *cfg) {
 	FILE *fp;
 	char *line = NULL;
 	char *p;
 	size_t n = 0;
 
-	fp = fopen(config, "r");
+	fp = fopen(cfg->config, "r");
 	if (fp == NULL) {
-		fprintf(stderr, "can't open %s\n", config);
+		fprintf(stderr, "can't open %s\n", cfg->config);
 		return 0;
 	}
 	while (getline(&line, &n, fp) != -1) {
 		line = splitline(&line);
-		if (!line)
+		if (!line || line[0] == '#')
 			continue;
-		p = strstr(line, "daemon");
-		if (p)
-			dflag = 1;
-		p = strstr(line, "admin=");
+		p = skipstr(line, "server:");
 		if (p) {
-			p += 9;
-			admin = estrdup(p);
+			free(cfg->server);
+			cfg->server = estrdup(p);
 		}
-		p = strstr(line, "server=");
+		p = skipstr(line, "port:");
 		if (p) {
-			p += 7;
-			host = estrdup(p);
+			free(cfg->port);
+			cfg->port = estrdup(p);
 		}
-		p = strstr(line, "port=");
+		p = skipstr(line, "nick:");
 		if (p) {
-			p += 5;
-			port = estrdup(p);
+			free(cfg->nick);
+			cfg->nick = estrdup(p);
 		}
-		p = strstr(line, "nick=");
+		p = skipstr(line, "name:");
 		if (p) {
-			p += 5;
-			nick = estrdup(p);
+			free(cfg->name);
+			cfg->name = estrdup(p);
 		}
-		p = strstr(line, "name=");
+		p = skipstr(line, "admin:");
 		if (p) {
-			p += 5;
-			name = estrdup(p);
+			free(cfg->admin);
+			cfg->admin = estrdup(p);
 		}
 	}
+	if (!cfg->port)
+		cfg->port = "6667";
+	if (!cfg->admin)
+		cfg->admin = "nobody";
 	free(line);
 	fclose(fp);
 	return 1;
@@ -167,42 +174,44 @@ int contohost(const char *host, const char *port) {
 }
 
 int putfd(int fd, char *fmt, ...) {
-	int i;
-	char *bufout = emalloc(BUFSIZ+1);
+	int len;
+	char *bufout = emalloc(BUF+1);
 	va_list ap;
 
 	va_start(ap, fmt);
-	vsnprintf(bufout, BUFSIZ+1, fmt, ap);
+	vsnprintf(bufout, BUF, fmt, ap);
 	va_end(ap);
-	strncat(bufout, "\r\n", BUFSIZ+1);
+	strcat(bufout, "\r\n");
 
 	printf("send:%s", bufout);
-	i = send(fd, bufout, strlen(bufout), 0);
+	len = send(fd, bufout, strlen(bufout), 0);
 	free(bufout);
-	return i;
+	return len;
 }
 
 int getfd(int fd, char *bufin) {
-	int i;
-	i = recv(fd, bufin, BUFSIZ, 0);
-	if (i != -1)
-		bufin[i] = '\0';
-	if (i)
-		printf("recv:%s", bufin);
-	return i;
+	int len;
+	len = recv(fd, bufin, BUF, MSG_DONTWAIT);
+	if (len > 0) {
+		bufin[len] = '\0';
+		printf("%s", bufin);
+	}
+	return len;
 }
 
-void parseline(char *line, struct command *c) {
-	c->cmd = line;
-	c->nick = host;
-	c->host = "";
-	if (!strncmp(c->cmd, ":", 1)) {
-		c->nick = c->cmd+1;
-		c->cmd = splitstr(c->nick, ' ');
-		c->host = splitstr(c->nick, '!');
+void parseline(char *line, struct cmd *cmd, struct cfg cfg) {
+	if (!line || !*line)
+		return;
+	cmd->cmd = line;
+	cmd->nick = cfg.server;
+	cmd->host = "";
+	if (!strncmp(cmd->cmd, ":", 1)) {
+		cmd->nick = cmd->cmd+1;
+		cmd->cmd = splitstr(cmd->nick, ' ');
+		cmd->host = splitstr(cmd->nick, '!');
 	}
-	c->par = splitstr(c->cmd, ' ');
-	c->msg = splitstr(c->par, ':');
+	cmd->par = splitstr(cmd->cmd, ' ');
+	cmd->msg = splitstr(cmd->par, ':');
 }
 
 char *xmlstr(char *s, char *t) {
@@ -211,6 +220,8 @@ char *xmlstr(char *s, char *t) {
 
 	sprintf(b, "<%s>", t);
 	sprintf(e, "</%s>", t);
+	if (strlen(s) < (strlen(b)+strlen(e)+1))
+		return NULL;
 	s = strcasestr(s, b);
 	if (s) {
 		s += strlen(b);
@@ -227,183 +238,178 @@ char *xmlstr(char *s, char *t) {
 }
 
 char *httpgetxml(char *url, char *xmltag) {
-	int urlfd;
+	int len = 0;
+	int fd;
 	char *bufurl;
 	char *host, *page, *value = NULL;
 
+	if (!url || !xmltag || !*url || !*xmltag)
+		return NULL;
 	host = url;
 	page = splitstr(host, '/');
-	urlfd = contohost(host, "80");
-	if (urlfd == -1)
-		return 0;
-	putfd(urlfd, "GET http://%s/%s HTTP/1.1\r\n"
+	fd = contohost(host, "80");
+	if (fd == -1)
+		return NULL;
+	putfd(fd, "GET http://%s/%s HTTP/1.1\r\n"
 			"Host: %s\r\n"
 			"User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:30.0) Gecko/20100101 Firefox/30.0\r\n"
 			, host, page, host);
-	bufurl = emalloc(BUFSIZ+1);
-	while (getfd(urlfd, bufurl) && !value)
+
+	bufurl = emalloc(BUF+1);
+	sleep(1);
+	while (getfd(fd, bufurl) && !value)
 		value = xmlstr(bufurl, xmltag);
 	free(bufurl);
-	close(urlfd);
+
+	close(fd);
 	return value;
 }
 
-int coreopts(struct command c, int fd) {
-	if (!strncmp("!p", c.msg, 2)) {
-		if (!strncmp("#", c.par, 1)) {
-			putfd(fd, "PART %s", c.par);
-			return 1;
-		}
-	} else if (!strncmp("!o", c.msg, 2)) {
-		putfd(fd, "PRIVMSG %s :My owner: %s",
-				!strncmp("#", c.par, 1) ? c.par : c.nick,
-				c.host);
-		return 1;
-	} else if (!strncmp("!m", c.msg, 2)) {
-		putfd(fd, "PRIVMSG %s :%s",
-				!strncmp("#", c.par, 1) ? c.par : c.nick,
-				c.host);
-		return 1;
-	} else if (!strncmp("!h", c.msg, 2)) {
+void coreopts(struct cmd cmd, struct cfg cfg, int fd) {
+	if (!strncmp("!h", cmd.msg, 2)) {
 		putfd(fd, "PRIVMSG %s :Usage: !h help, !p part, !j join, !m hostmask, !o owner",
-				!strncmp("#", c.par, 1) ? c.par : c.nick);
-		return 1;
-	} else if (!strncmp("!j #", c.msg, 4)) {
-		putfd(fd, "JOIN %s", c.msg+3);
-		putfd(fd, "PRIVMSG %s :I was invited by %s. Try !h to see my commands.", c.msg+3, c.nick);
-		return 1;
+				!strncmp("#", cmd.par, 1) ? cmd.par : cmd.nick);
+	} else if (!strncmp("!o", cmd.msg, 2)) {
+		putfd(fd, "PRIVMSG %s :My owner: %s",
+				!strncmp("#", cmd.par, 1) ? cmd.par : cmd.nick,
+				cfg.admin);
+	} else if (!strncmp("!m", cmd.msg, 2)) {
+		putfd(fd, "PRIVMSG %s :%s",
+				!strncmp("#", cmd.par, 1) ? cmd.par : cmd.nick,
+				cmd.host);
+	} else if (!strncmp("!j #", cmd.msg, 4)) {
+		putfd(fd, "JOIN %s", cmd.msg+3);
+		putfd(fd, "PRIVMSG %s :I was invited by %s. Try !h to see my commands.", cmd.msg+3, cmd.nick);
+	} else if (!strncmp("!p", cmd.msg, 2)) {
+		if (!strncmp("#", cmd.par, 1)) {
+			putfd(fd, "PART %s", cmd.par);
+		}
 	}
-	return 0;
 }
 
-int adminopts(struct command c, int fd) {
-	if (!strcmp(c.host, admin) && !!strncmp("#", c.par, 1)) {
-		if (!strncmp("!q", c.msg, 2)) {
-			putfd(fd, "PRIVMSG %s :closing connections", c.nick);
+void adminopts(struct cmd cmd, struct cfg cfg, int fd) {
+	if (!strcmp(cmd.host, cfg.admin) && !!strncmp("#", cmd.par, 1)) {
+		if (!strncmp("!r", cmd.msg, 2)) {
+			reload = 1;
+			putfd(fd, "PRIVMSG %s :Reloading %s", cmd.nick, cfg.config);
+		} else if (!strncmp("!q", cmd.msg, 2)) {
 			quit = 1;
-			return 1;
-		} else if (!strncmp("!h", c.msg, 2)) {
-			putfd(fd, "PRIVMSG %s :Admin: !q quit", c.nick);
-			return 1;
+		} else if (!strncmp("!h", cmd.msg, 2)) {
+			putfd(fd, "PRIVMSG %s :Usage: !q quit, !r reload", cmd.nick);
 		}
 	}
-	return 0;
 }
 
-int urlopts(struct command *c, int fd) {
+int urlopts(struct cmd cmd, int fd) {
 	char *url, *title;
-	if (!strncmp("#", c->par, 1)) {
-		url = strstr(c->msg, "http://");
-		if (url)
-			url += 7;
-		else {
-			url = strstr(c->msg, "https://");
-			if (url)
-				url += 8;
-			else
-				url = strstr(c->msg, "www.");
-		}
+	if (!strncmp("#", cmd.par, 1)) {
+		url = skipstr(cmd.msg, "http://");
+		if (!url)
+			url = skipstr(cmd.msg, "https://");
+		if (!url)
+			url = strstr(cmd.msg, "www.");
 		if (url) {
+			url = estrdup(url);
 			splitstr(url, ' ');
 			title = httpgetxml(url, "title");
 			if (title) {
-				putfd(fd, "PRIVMSG %s :%s", c->par, title);
+				putfd(fd, "PRIVMSG %s :%s", cmd.par, title);
 				free(title);
 				return 1;
 			}
+			free(url);
 		}
 	}
 	return 0;
 }
 
 int main(int argc, char *argv[]) {
-	int i, fd;
-	char *bufin, *line;
-	struct command c;
-	char *username;
+	int len = 0;
+	int fd = -1;
+	char *bufin;
+	char *lines;
+	char *line;
+	char *user;
+	char *defpath;
+	struct cmd cmd;
+	struct cfg cfg;
 
-	username = getenv("USER");
-	if (username) {
-		config = emalloc(strlen(username)+22);
-		sprintf(config, "/home/%s/.bottler.conf", username);
-		readconfig();
-	}
+	memset(&cfg, 0, sizeof cfg);
 
-	for (i = 1; i < argc; i++) {
-		if (!strcmp("-d", argv[i])) {
-			dflag = 1;
-		} else if (argv[i+1] == NULL || argv[i+1][0] == '-') {
+	for (len = 1; len < argc; len++) {
+		if (argv[len+1] == NULL || argv[len+1][0] == '-') {
 			eprintf("usage: %s [options]\n"
 					"\n"
 					"-h               help\n"
-					"-d               run as daemon\n"
 					"-f <file>        config file\n"
-					"-s <host:port>   server hostname\n"
-					"-n <nick> [name] bot nickname\n"
-					"-n <name>        bot name\n"
+					"-s <host>        server hostname\n"
+					"-p <port>        server port\n"
+					"-n <nick>        bot nickname\n"
+					"-N <name>        bot name\n"
 					"-m <hostmask>    admin hostmask\n"
 					, argv[0]);
-		} else if (!strcmp("-f", argv[i])) {
-			free(config);
-			config = argv[++i];
-			readconfig();
-		} else if (!strcmp("-s", argv[i])) {
-			free(host);
-			host = argv[++i];
-			if (strlen(host) != strcspn(host, ":")) {
-				free(port);
-				port = splitstr(host, ':');
-			}
-		} else if (!strcmp("-m", argv[i])) {
-			free(admin);
-			admin = argv[++i];
-		} else if (!strcmp("-n", argv[i])) {
-			free(nick);
-			nick = argv[++i];
-		} else if (!strcmp("-N", argv[i])) {
-			free(name);
-			name = argv[++i];
-			if (argv[i+1] != NULL && argv[i+1][0] != '-') {
-				name = emalloc(strlen(argv[i]) + strlen(argv[i+1]) + 2);
-				strcpy(name, argv[i]);
-				strcat(name, " ");
-				strcat(name, argv[++i]);
-			}
+		} else if (!strcmp("-f", argv[len])) {
+			cfg.config = argv[++len];
+			loadconfig(&cfg);
+		} else if (!strcmp("-s", argv[len])) {
+			cfg.server = argv[++len];
+		} else if (!strcmp("-p", argv[len])) {
+			cfg.port = argv[++len];
+		} else if (!strcmp("-n", argv[len])) {
+			cfg.nick  = argv[++len];
+		} else if (!strcmp("-N", argv[len])) {
+			cfg.name  = argv[++len];
+		} else if (!strcmp("-m", argv[len])) {
+			cfg.admin = argv[++len];
 		}
 	}
 
-	printf("nick:%s\nname:%s\nserver:%s:%s\nadmin:%s\nconfig:%s\n",
-			nick, name, host, port, admin, config);
-
-	if (dflag)
-		if (daemon(1,0) != 0)
-			eprintf("failed to daemonize");
-
-	fd = contohost(host, port);
-	if (fd == -1)
-		eprintf("failed to connect %s:%s\n", host, port);
-	putfd(fd, "NICK %s", nick);
-	putfd(fd, "USER %s 0 * :%s", nick, name);
-
-	bufin = emalloc(BUFSIZ+1);
+	signal(SIGHUP, sighandler);
 	signal(SIGINT, sighandler);
+	signal(SIGTERM, sighandler);
 
-	while(!quit) {
-		i = getfd(fd, bufin);
-		if (!i)
-			continue;
-		while ((line = splitline(&bufin)) != NULL) {
-			parseline(line, &c);
+	if (!cfg.config) {
+		user = getenv("USER");
+		if (user) {
+			defpath = "/home/%s/.bottler.conf";
+			cfg.config = emalloc(strlen(user)+strlen(defpath));
+			sprintf(cfg.config, defpath, user);
+			loadconfig(&cfg);
+		}
+	}
+	if (!cfg.server || !cfg.nick || !cfg.name)
+		eprintf("You need to specify server, nick and name\n");
 
-			if(!strcmp("PING", c.cmd))
-				putfd(fd, "PONG %s", c.msg);
+	printf("server:%s:%s\nnick:%s\nname:%s\nadmin:%s\nconfig:%s\n",
+			cfg.server, cfg.port, cfg.nick, cfg.name, cfg.admin, cfg.config);
 
-			if (coreopts(c, fd))
-				continue;
-			if (adminopts(c, fd))
-				continue;
-			if (urlopts(&c, fd))
-				continue;
+	fd = contohost(cfg.server, cfg.port);
+	if (fd == -1)
+		eprintf("failed to connect %s:%s\n", cfg.server, cfg.port);
+	else
+		printf("connected to %s:%s\n", cfg.server, cfg.port);
+
+	putfd(fd, "NICK %s", cfg.nick);
+	putfd(fd, "USER %s 0 * :%s", cfg.nick, cfg.name);
+
+	bufin = emalloc(BUF+1);
+	while(quit == 0) {
+		len = getfd(fd, bufin);
+		if (len > 0) {
+			lines = bufin;
+			while ((line = splitline(&lines)) != NULL) {
+				if (reload)
+					loadconfig(&cfg);
+
+				parseline(line, &cmd, cfg);
+
+				if(!strcmp("PING", cmd.cmd))
+					putfd(fd, "PONG %s", cmd.msg);
+
+				coreopts(cmd, cfg, fd);
+				adminopts(cmd, cfg, fd);
+				urlopts(cmd, fd);
+			}
 		}
 	}
 
