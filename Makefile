@@ -1,6 +1,6 @@
 CFLAGS+=-std=c99 -pedantic -Wall -Wextra
 
-BIN=cbot
+BIN=bottler
 
 all: $(BIN)
 
