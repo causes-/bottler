@@ -1,6 +1,9 @@
 bottler
 -------
-Simple irc bot made in pure C. Currently it can only connect to IRC. Configuration is done by editing config.h and rebuilding. You can also pass options via commandline parameters.
+Simple irc bot made in pure C.
+Currently it can only connect to IRC.
+Configuration is done by editing config.h and rebuilding.
+You can also pass options via commandline parameters.
 
 usage
 -----

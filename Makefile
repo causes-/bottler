@@ -5,7 +5,7 @@ BIN=bottler
 all: $(BIN)
 
 clean:
-	rm -f $(BIN)
+	rm -f $(BIN) $(OBJ)
 
 install: all
 	mkdir -p $(DESTDIR)/usr/bin
