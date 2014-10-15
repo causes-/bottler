@@ -1,14 +1,15 @@
-CFLAGS+=-g -ggdb -std=c99 -pedantic -Wall
-BIN=bottler
+CFLAGS+=-std=c99 -pedantic -Wall -Wextra
 
-all: ${BIN}
+BIN=cbot
 
-install: all
-	mkdir -p ~/bin
-	install -m 755 ${BIN} /usr/bin/
-
-config:
-	install -m 644 bottler.conf ~/.bottler.conf
+all: $(BIN)
 
 clean:
-	rm -f ${BIN}
+	rm -f $(BIN)
+
+install: all
+	mkdir -p $(DESTDIR)/usr/bin
+	install -m 755 $(BIN) $(DESTDIR)/usr/bin/
+
+uninstall:
+	rm -f $(DESTDIR)/usr/bin/$(BIN)

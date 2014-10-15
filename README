@@ -1,12 +1,16 @@
-Bottler
-=======
+bottler
+-------
+Simple irc bot made in pure C. Currently it can only connect to IRC. Configuration is done by editing config.h and rebuilding. You can also pass options via commandline parameters.
 
-About
+usage
 -----
-Simple irc bot. Can already fetch url titles.
+usage: cbot [options]
 
-Please change these values in bottler.c before trying:
-char *host = "irc.quakenet.org";
-char *port = "6667";
-char *nick = "bottler";
-char *name = "bottler bot";
+-h    help
+-v    version
+
+-s <host>       server hostname
+-p <port>       server port
+-n <nick>       bot nickname
+-u <name>       bot username
+-c <channel>    channel to join
