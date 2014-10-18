@@ -7,7 +7,7 @@ You can also pass options via commandline parameters.
 
 usage
 -----
-usage: cbot [options]
+usage: bottler [options]
 
 -h    help
 -v    version
@@ -17,3 +17,4 @@ usage: cbot [options]
 -n <nick>       bot nickname
 -u <name>       bot username
 -c <channel>    channel to join
+-o <owner>      owner hostmask

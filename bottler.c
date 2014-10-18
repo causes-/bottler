@@ -6,6 +6,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <unistd.h>
+#include <curl/curl.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
@@ -22,6 +23,11 @@ struct command {
 	char *msg;
 };
 
+struct htmldata {
+	char *memory;
+	size_t size;
+};
+
 void eprintf(const char *fmt, ...) {
 	va_list ap;
 
@@ -29,6 +35,20 @@ void eprintf(const char *fmt, ...) {
 	vfprintf(stderr, fmt, ap);
 	va_end(ap);
 	exit(EXIT_FAILURE);
+}
+
+void *emalloc(size_t size) {
+	void *p = malloc(size);
+	if (!p)
+		eprintf("out of memory\n");
+	return p;
+}
+
+void *estrdup(void *p) {
+	void *r = strdup(p);
+	if (!r)
+		eprintf("out of memory\n");
+	return r;
 }
 
 char *skip(char *s, char c) {
@@ -74,9 +94,85 @@ int sendf(FILE *srv, char *fmt, ...) {
 	vsnprintf(buf, sizeof buf, fmt, ap);
 	va_end(ap);
 
-	printf("<%s", buf);
+	printf("<%s\n", buf);
 
 	return fprintf(srv, "%s\r\n", buf);
+}
+
+char *getxmlstr(char *s, char *t) {
+	char *b = emalloc(strlen(t) + 3);
+	char *e = emalloc(strlen(t) + 4);
+
+	sprintf(b, "<%s>", t);
+	sprintf(e, "</%s>", t);
+
+	if (strlen(s) < (strlen(b)+strlen(e)+1))
+		return NULL;
+
+	s = strcasestr(s, b);
+	if (s) {
+		s += strlen(b);
+		t = strcasestr(s, e);
+		if (t) {
+			*t = '\0';
+			s = estrdup(s);
+		} else
+			s = NULL;
+	}
+
+	free(b);
+	free(e);
+	return s;
+}
+
+static size_t writedata(void *contents, size_t size, size_t nmemb, void *userp) {
+	size_t realsize = size * nmemb;
+	struct htmldata *mem = (struct htmldata *)userp;
+
+	mem->memory = realloc(mem->memory, mem->size + realsize + 1);
+	if(!mem->memory)
+		eprintf("not enough memory (realloc returned NULL)\n");
+
+	memcpy(&(mem->memory[mem->size]), contents, realsize);
+	mem->size += realsize;
+	mem->memory[mem->size] = 0;
+
+	return realsize;
+}
+
+char *gettitle(char *url) {
+	char *title = NULL;
+	CURL *curl_handle;
+	CURLcode res;
+
+	struct htmldata data;
+
+	data.memory = malloc(1);
+	data.size = 0;
+
+	curl_global_init(CURL_GLOBAL_ALL);
+	curl_handle = curl_easy_init();
+
+	/* specify URL to get */ 
+	curl_easy_setopt(curl_handle, CURLOPT_URL, url);
+	/* send all data to this function  */ 
+	curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, writedata);
+	/* we pass our 'data' struct to the callback function */ 
+	curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)&data);
+	curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
+	res = curl_easy_perform(curl_handle);
+
+	if(res != CURLE_OK)
+		fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+	else
+		title = getxmlstr(data.memory, "title");
+
+	curl_easy_cleanup(curl_handle);
+	if(data.memory)
+		free(data.memory);
+	curl_global_cleanup();
+
+	return title;
 }
 
 void corejobs(FILE *srv, struct command c) {
@@ -115,6 +211,28 @@ void corejobs(FILE *srv, struct command c) {
 	}
 }
 
+int urljobs(FILE *srv, struct command c) {
+	char *url, *title;
+	if (!strncmp("#", c.par, 1)) {
+		url = c.msg;
+		if (!strncmp(url, "http://", 7) ||
+				!strncmp(url, "https://", 8) ||
+				!strncmp(url, "www.", 4)) {
+			url = estrdup(url);
+			skip(url, ' ');
+			printf("url:%s\n", url);
+			title = gettitle(url);
+			if (title) {
+				sendf(srv, "PRIVMSG %s :%s", c.par, title);
+				free(title);
+			}
+			free(url);
+		}
+	}
+
+	return 0;
+}
+
 bool parseline(FILE *srv, char *line) {
 	struct command c;
 
@@ -138,6 +256,7 @@ bool parseline(FILE *srv, char *line) {
 	if (!strcmp("PING", c.cmd))
 		sendf(srv, "PONG %s", c.msg);
 
+	urljobs(srv, c);
 	corejobs(srv, c);
 
 	return true;

@@ -1,4 +1,5 @@
 CFLAGS+=-std=c99 -pedantic -Wall -Wextra
+LDLIBS=-lcurl
 
 BIN=bottler
 
