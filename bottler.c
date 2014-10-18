@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <stdarg.h>
 #include <string.h>
+#include <ctype.h>
 #include <unistd.h>
 #include <curl/curl.h>
 #include <sys/types.h>
@@ -57,6 +58,15 @@ char *skip(char *s, char c) {
 	if(*s != '\0')
 		*s++ = '\0';
 	return s;
+}
+
+static void trim(char *s) {
+	char *e;
+
+	e = s + strlen(s) - 1;
+	while(isspace(*e) && e > s)
+		e--;
+	*(e + 1) = '\0';
 }
 
 int dial(const char *host, const char *port) {
@@ -125,7 +135,7 @@ char *getxmlstr(char *s, char *t) {
 	return s;
 }
 
-static size_t writedata(void *contents, size_t size, size_t nmemb, void *userp) {
+static size_t curlcallback(void *contents, size_t size, size_t nmemb, void *userp) {
 	size_t realsize = size * nmemb;
 	struct htmldata *mem = (struct htmldata *)userp;
 
@@ -156,7 +166,7 @@ char *gettitle(char *url) {
 	/* specify URL to get */ 
 	curl_easy_setopt(curl_handle, CURLOPT_URL, url);
 	/* send all data to this function  */ 
-	curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, writedata);
+	curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, curlcallback);
 	/* we pass our 'data' struct to the callback function */ 
 	curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)&data);
 	curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
@@ -175,42 +185,6 @@ char *gettitle(char *url) {
 	return title;
 }
 
-void corejobs(FILE *srv, struct command c) {
-#ifdef DEBUG
-	printf("nick:%s mask:%s cmd:%s par:%s msg:%s\n",
-			c.nick, c.mask, c.cmd, c.par, c.msg);
-#endif
-
-	if (c.msg[0] == '!') {
-		switch (c.msg[1]) {
-		case 'h':
-			if (!strcmp(c.mask, owner)) {
-				sendf(srv, "PRIVMSG %s :Usage: !h help, !j join, !p part, !o owner",
-						c.par[0] == '#' ? c.par : c.nick);
-			} else {
-				sendf(srv, "PRIVMSG %s :Usage: !h help, !o owner",
-						c.par[0] == '#' ? c.par : c.nick);
-			}
-			break;
-		case 'o':
-			sendf(srv, "PRIVMSG %s :My owner: %s",
-					c.par[0] == '#' ? c.par : c.nick,
-					owner);
-			break;
-		case 'j':
-			if (!strcmp(c.mask, owner))
-				sendf(srv, "JOIN %s", c.msg+3);
-			break;
-		case 'p':
-			if (!strcmp(c.mask, owner)) {
-				sendf(srv, "PART %s",
-						c.par[0] == '#' ? c.par : c.msg+3);
-			}
-			break;
-		}
-	}
-}
-
 int urljobs(FILE *srv, struct command c) {
 	char *url, *title;
 	if (!strncmp("#", c.par, 1)) {
@@ -220,7 +194,8 @@ int urljobs(FILE *srv, struct command c) {
 				!strncmp(url, "www.", 4)) {
 			url = estrdup(url);
 			skip(url, ' ');
-			printf("url:%s\n", url);
+			trim(url);
+			printf("url:\"%s\"", url);
 			title = gettitle(url);
 			if (title) {
 				sendf(srv, "PRIVMSG %s :%s", c.par, title);
@@ -255,9 +230,13 @@ bool parseline(FILE *srv, char *line) {
 
 	if (!strcmp("PING", c.cmd))
 		sendf(srv, "PONG %s", c.msg);
+	else if (!strncmp("!j", c.msg, 2))
+		sendf(srv, "JOIN %s", c.msg+3);
+	else if (!strncmp("!p", c.msg, 2))
+		if (c.par[0] == '#')
+			sendf(srv, "PART %s", c.par);
 
 	urljobs(srv, c);
-	corejobs(srv, c);
 
 	return true;
 }
@@ -283,7 +262,6 @@ int main(int argc, char **argv) {
 					"-n <nick>       bot nickname\n"
 					"-u <name>       bot username\n"
 					"-c <channel>    channel to join\n"
-					"-o <owner>      owner hostmask\n"
 					, argv[0]);
 		else if (!strcmp("-s", argv[i]))
 			host = argv[++i];
@@ -293,18 +271,12 @@ int main(int argc, char **argv) {
 			nick = argv[++i];
 		else if (!strcmp("-u", argv[i]))
 			name = argv[++i];
-		else if (!strcmp("-c", argv[i]))
-			channel = argv[++i];
-		else if (!strcmp("-o", argv[i]))
-			owner = argv[++i];
 	}
 
 	if (!host || !port)
 		eprintf("you need to specify host and port\n");
 	if (!nick || !name)
 		eprintf("you need to specify nick and name\n");
-	if (!owner)
-		eprintf("you need to specify owner\n");
 
 	fd = dial(host, port);
 	if (fd == -1)
@@ -316,8 +288,6 @@ int main(int argc, char **argv) {
 
 	sendf(srv, "NICK %s", nick);
 	sendf(srv, "USER %s 0 * :%s", nick, name);
-	if (channel)
-		sendf(srv, "JOIN %s", channel);
 
 	fflush(srv);
 	setbuf(srv, NULL);
