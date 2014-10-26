@@ -39,14 +39,27 @@ void eprintf(const char *fmt, ...) {
 }
 
 void *emalloc(size_t size) {
-	void *p = malloc(size);
+	void *p;
+
+	p = malloc(size);
 	if (!p)
 		eprintf("out of memory\n");
 	return p;
 }
 
+void *erealloc(void *p, size_t size) {
+	void *r;
+
+	r = realloc(p, size);
+	if (!r)
+		eprintf("out of memory\n");
+	return r;
+}
+
 void *estrdup(void *p) {
-	void *r = strdup(p);
+	void *r;
+
+	r = strdup(p);
 	if (!r)
 		eprintf("out of memory\n");
 	return r;
@@ -60,7 +73,7 @@ char *skip(char *s, char c) {
 	return s;
 }
 
-static void trim(char *s) {
+void trim(char *s) {
 	char *e;
 
 	e = s + strlen(s) - 1;
@@ -135,13 +148,11 @@ char *getxmlstr(char *s, char *t) {
 	return s;
 }
 
-static size_t curlcallback(void *contents, size_t size, size_t nmemb, void *userp) {
+size_t curlcallback(void *contents, size_t size, size_t nmemb, void *userp) {
 	size_t realsize = size * nmemb;
 	struct htmldata *mem = (struct htmldata *)userp;
 
-	mem->memory = realloc(mem->memory, mem->size + realsize + 1);
-	if(!mem->memory)
-		eprintf("not enough memory (realloc returned NULL)\n");
+	mem->memory = erealloc(mem->memory, mem->size + realsize + 1);
 
 	memcpy(&(mem->memory[mem->size]), contents, realsize);
 	mem->size += realsize;
@@ -172,13 +183,13 @@ char *gettitle(char *url) {
 	curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
 	res = curl_easy_perform(curl_handle);
 
-	if(res != CURLE_OK)
+	if (res != CURLE_OK)
 		fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
 	else
 		title = getxmlstr(data.memory, "title");
 
 	curl_easy_cleanup(curl_handle);
-	if(data.memory)
+	if (data.memory)
 		free(data.memory);
 	curl_global_cleanup();
 
@@ -195,7 +206,6 @@ int urljobs(FILE *srv, struct command c) {
 			url = estrdup(url);
 			skip(url, ' ');
 			trim(url);
-			printf("url:\"%s\"", url);
 			title = gettitle(url);
 			if (title) {
 				sendf(srv, "PRIVMSG %s :%s", c.par, title);
@@ -214,8 +224,6 @@ bool parseline(FILE *srv, char *line) {
 	if (!line || !*line)
 		return false;
 
-	printf(">%s", line);
-
 	c.cmd = line;
 	c.nick = host;
 	c.mask = "";
@@ -224,9 +232,10 @@ bool parseline(FILE *srv, char *line) {
 		c.cmd = skip(c.nick, ' ');
 		c.mask = skip(c.nick, '!');
 	}
+	skip(c.cmd, '\r');
 	c.par = skip(c.cmd, ' ');
 	c.msg = skip(c.par, ':');
-	c.par[strlen(c.par)] = '\0';
+	trim(c.par);
 
 	if (!strcmp("PING", c.cmd))
 		sendf(srv, "PONG %s", c.msg);
@@ -261,7 +270,6 @@ int main(int argc, char **argv) {
 					"-p <port>       server port\n"
 					"-n <nick>       bot nickname\n"
 					"-u <name>       bot username\n"
-					"-c <channel>    channel to join\n"
 					, argv[0]);
 		else if (!strcmp("-s", argv[i]))
 			host = argv[++i];
@@ -300,6 +308,7 @@ int main(int argc, char **argv) {
 			if (FD_ISSET(fileno(srv), &readfds)) {
 				if (!fgets(buf, sizeof buf, srv))
 					eprintf("host closed connection\n");
+				printf(">%s", buf);
 				parseline(srv, buf);
 			}
 		}

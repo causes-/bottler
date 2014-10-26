@@ -1,7 +1,7 @@
 bottler
 -------
-Simple irc bot made in pure C.
-Currently it can only join, part and fetch url titles.
+Simple irc bot made in C.
+Currently it can join, part and fetch url titles.
 Configuration is done by editing config.h and rebuilding.
 You can also pass options via commandline parameters.
 
