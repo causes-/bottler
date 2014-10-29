@@ -304,13 +304,15 @@ int main(int argc, char **argv) {
 		FD_ZERO(&readfds);
 		FD_SET(fileno(srv), &readfds);
 
-		if (select(fileno(srv) + 1, &readfds, 0, 0, 0)) {
+		if (select(fileno(srv) + 1, &readfds, 0, 0, &(struct timeval){120, 0})) {
 			if (FD_ISSET(fileno(srv), &readfds)) {
 				if (!fgets(buf, sizeof buf, srv))
 					eprintf("host closed connection\n");
 				printf(">%s", buf);
 				parseline(srv, buf);
 			}
+		} else {
+			sendf(srv, "PING %s", host);
 		}
 	}
 }
