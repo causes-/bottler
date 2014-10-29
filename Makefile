@@ -2,8 +2,12 @@ CFLAGS+=-std=c99 -pedantic -Wall -Wextra
 LDLIBS=-lcurl
 
 BIN=bottler
+OBJ=config.h
 
-all: $(BIN)
+all: $(OBJ) $(BIN)
+
+config.h:
+	cp config.def.h config.h
 
 clean:
 	rm -f $(BIN) $(OBJ)
