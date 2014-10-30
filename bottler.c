@@ -70,8 +70,8 @@ char *skip(char *s, char c) {
 	while(*s != c && *s != '\0')
 		s++;
 	if(*s != '\0')
-		*s++ = '\0';
-	return s;
+		*s = '\0';
+	return ++s;
 }
 
 void trim(char *s) {
@@ -201,7 +201,7 @@ char *gettitle(char *url) {
 	return title;
 }
 
-int urljobs(FILE *srv, struct command c) {
+void urljobs(FILE *srv, struct command c) {
 	char *url, *title;
 	if (!strncmp("#", c.par, 1)) {
 		url = c.msg;
@@ -219,8 +219,26 @@ int urljobs(FILE *srv, struct command c) {
 			free(url);
 		}
 	}
+}
 
-	return 0;
+void corejobs(FILE *srv, struct command c) {
+	if (!strncmp("!h", c.msg, 2)) {
+		sendf(srv, "PRIVMSG %s :Usage: !h help, !j join, !p part, !o owner",
+				c.par[0] == '#'  ? c.par : c.nick);
+	} else if (!strncmp("!o", c.msg, 2)) {
+		sendf(srv, "PRIVMSG %s :My owner: %s",
+				c.par[0] == '#'  ? c.par : c.nick,
+				owner);
+	} else if (!strcmp(c.mask, owner)) {
+		if (!strncmp("!j", c.msg, 2)) {
+			sendf(srv, "JOIN %s", c.msg+3);
+		} else if (!strcmp("!p", c.msg)) {
+			if (c.par[0] == '#')
+				sendf(srv, "PART %s", c.par);
+		} else if (!strncmp("!p ", c.msg, 3)) {
+			sendf(srv, "PART %s", c.msg+3);
+		}
+	}
 }
 
 bool parseline(FILE *srv, char *line) {
@@ -244,12 +262,8 @@ bool parseline(FILE *srv, char *line) {
 
 	if (!strcmp("PING", c.cmd))
 		sendf(srv, "PONG %s", c.msg);
-	else if (!strncmp("!j", c.msg, 2))
-		sendf(srv, "JOIN %s", c.msg+3);
-	else if (!strncmp("!p", c.msg, 2))
-		if (c.par[0] == '#')
-			sendf(srv, "PART %s", c.par);
 
+	corejobs(srv, c);
 	urljobs(srv, c);
 
 	return true;
@@ -273,10 +287,11 @@ int main(int argc, char **argv) {
 					"-h    help\n"
 					"-v    version\n"
 					"\n"
-					"-s <host>       server hostname\n"
-					"-p <port>       server port\n"
-					"-n <nick>       bot nickname\n"
-					"-u <name>       bot username\n"
+					"-s <host>     server hostname\n"
+					"-p <port>      server port\n"
+					"-n <nick>     bot nickname\n"
+					"-u <name>     bot username\n"
+					"-o <owner>    bot owner\n"
 					, argv[0]);
 		else if (!strcmp("-s", argv[i]))
 			host = argv[++i];
@@ -286,6 +301,8 @@ int main(int argc, char **argv) {
 			nick = argv[++i];
 		else if (!strcmp("-u", argv[i]))
 			name = argv[++i];
+		else if (!strcmp("-o", argv[i]))
+			owner = argv[++i];
 	}
 
 	if (!host || !port)

@@ -13,4 +13,7 @@ char *nick = NULL;
 // bot username
 char *name = NULL;
 
+// bot owner
+char *owner = NULL;
+
 #endif
