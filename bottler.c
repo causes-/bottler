@@ -288,7 +288,7 @@ int main(int argc, char **argv) {
 					"-v    version\n"
 					"\n"
 					"-s <host>     server hostname\n"
-					"-p <port>      server port\n"
+					"-p <port>     server port\n"
 					"-n <nick>     bot nickname\n"
 					"-u <name>     bot username\n"
 					"-o <owner>    bot owner\n"

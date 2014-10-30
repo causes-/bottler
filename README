@@ -12,7 +12,8 @@ usage: bottler [options]
 -h    help
 -v    version
 
--s <host>       server hostname
--p <port>       server port
--n <nick>       bot nickname
--u <name>       bot username
+-s <host>     server hostname
+-p <port>     server port
+-n <nick>     bot nickname
+-u <name>     bot username
+-o <owner>    bot owner

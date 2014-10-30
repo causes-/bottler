@@ -12,6 +12,9 @@ config.h:
 clean:
 	rm -f $(BIN)
 
+distclean:
+	rm -f $(OBJ) $(BIN)
+
 install: all
 	mkdir -p $(DESTDIR)/usr/bin
 	install -m 755 $(BIN) $(DESTDIR)/usr/bin/
