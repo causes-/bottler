@@ -6,6 +6,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <ctype.h>
+#include <time.h>
 #include <unistd.h>
 #include <curl/curl.h>
 #include <sys/types.h>
@@ -112,12 +113,16 @@ int dial(const char *host, const char *port) {
 int sendf(FILE *srv, char *fmt, ...) {
 	char buf[BUFSIZ];
 	va_list ap;
+	time_t t;
+	struct tm *tm;
 
 	va_start(ap, fmt);
 	vsnprintf(buf, sizeof buf, fmt, ap);
 	va_end(ap);
 
-	printf("<%s\n", buf);
+	t = time(NULL);
+	tm = localtime(&t);
+	printf("[%d:%d:%d] <%s", tm->tm_hour, tm->tm_min, tm->tm_sec, buf);
 
 	return fprintf(srv, "%s\r\n", buf);
 }
@@ -256,6 +261,8 @@ int main(int argc, char **argv) {
 	int fd;
 	fd_set readfds;
 	FILE *srv;
+	time_t t;
+	struct tm *tm;
 
 	for (i = 1; i < argc; i++) {
 		if (!strcmp("-v", argv[i]))
@@ -308,7 +315,9 @@ int main(int argc, char **argv) {
 			if (FD_ISSET(fileno(srv), &readfds)) {
 				if (!fgets(buf, sizeof buf, srv))
 					eprintf("host closed connection\n");
-				printf(">%s", buf);
+				t = time(NULL);
+				tm = localtime(&t);
+				printf("[%d:%d:%d] >%s", tm->tm_hour, tm->tm_min, tm->tm_sec, buf);
 				parseline(srv, buf);
 			}
 		} else {

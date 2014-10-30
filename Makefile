@@ -10,7 +10,7 @@ config.h:
 	cp config.def.h config.h
 
 clean:
-	rm -f $(BIN) $(OBJ)
+	rm -f $(BIN)
 
 install: all
 	mkdir -p $(DESTDIR)/usr/bin

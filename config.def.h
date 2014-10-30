@@ -1,9 +1,16 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-char *host = NULL;       /* server hostname */
-char *port = NULL;       /* server port */
-char *nick = NULL;       /* bot nickname */
-char *name = NULL;       /* bot username */
+// server hostname
+char *host = NULL;
+
+// server port
+char *port = NULL;
+
+// bot nickname
+char *nick = NULL;
+
+// bot username
+char *name = NULL;
 
 #endif
