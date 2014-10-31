@@ -2,8 +2,8 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdbool.h>
 #include <stdarg.h>
+#include <stdbool.h>
 #include <string.h>
 #include <ctype.h>
 #include <time.h>
@@ -155,7 +155,7 @@ char *getxmlstr(char *s, char *t) {
 
 size_t curlcallback(void *contents, size_t size, size_t nmemb, void *userp) {
 	size_t realsize = size * nmemb;
-	struct htmldata *mem = (struct htmldata *)userp;
+	struct htmldata *mem = (struct htmldata *) userp;
 
 	mem->memory = erealloc(mem->memory, mem->size + realsize + 1);
 
@@ -257,13 +257,10 @@ void corejobs(FILE *srv, struct command c) {
 	}
 }
 
-bool parseline(FILE *srv, char *line) {
+void parseline(FILE *srv, char *line) {
 	struct command c;
 	time_t t;
 	struct tm *tm;
-
-	if (!line || !*line)
-		return false;
 
 	t = time(NULL);
 	tm = localtime(&t);
@@ -287,8 +284,6 @@ bool parseline(FILE *srv, char *line) {
 
 	corejobs(srv, c);
 	urljobs(srv, c);
-
-	return true;
 }
 
 int main(int argc, char **argv) {
