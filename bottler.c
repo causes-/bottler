@@ -122,7 +122,7 @@ int sendf(FILE *srv, char *fmt, ...) {
 
 	t = time(NULL);
 	tm = localtime(&t);
-	printf("[%d:%d:%d] <%s", tm->tm_hour, tm->tm_min, tm->tm_sec, buf);
+	printf("[%.2d:%.2d:%.2d] <%s\n", tm->tm_hour, tm->tm_min, tm->tm_sec, buf);
 
 	return fprintf(srv, "%s\r\n", buf);
 }
@@ -243,9 +243,16 @@ void corejobs(FILE *srv, struct command c) {
 
 bool parseline(FILE *srv, char *line) {
 	struct command c;
+	time_t t;
+	struct tm *tm;
 
 	if (!line || !*line)
 		return false;
+
+	t = time(NULL);
+	tm = localtime(&t);
+	skip(line, '\r');
+	printf("[%.2d:%.2d:%.2d] >%s\n", tm->tm_hour, tm->tm_min, tm->tm_sec, line);
 
 	c.cmd = line;
 	c.nick = host;
@@ -255,7 +262,6 @@ bool parseline(FILE *srv, char *line) {
 		c.cmd = skip(c.nick, ' ');
 		c.mask = skip(c.nick, '!');
 	}
-	skip(c.cmd, '\r');
 	c.par = skip(c.cmd, ' ');
 	c.msg = skip(c.par, ':');
 	trim(c.par);
@@ -273,10 +279,8 @@ int main(int argc, char **argv) {
 	int i;
 	char buf[BUFSIZ];
 	int fd;
-	fd_set readfds;
 	FILE *srv;
-	time_t t;
-	struct tm *tm;
+	fd_set readfds;
 
 	for (i = 1; i < argc; i++) {
 		if (!strcmp("-v", argv[i]))
@@ -309,6 +313,8 @@ int main(int argc, char **argv) {
 		eprintf("you need to specify host and port\n");
 	if (!nick || !name)
 		eprintf("you need to specify nick and name\n");
+	if (!owner)
+		eprintf("you need to specify owner\n");
 
 	fd = dial(host, port);
 	if (fd == -1)
@@ -332,9 +338,6 @@ int main(int argc, char **argv) {
 			if (FD_ISSET(fileno(srv), &readfds)) {
 				if (!fgets(buf, sizeof buf, srv))
 					eprintf("host closed connection\n");
-				t = time(NULL);
-				tm = localtime(&t);
-				printf("[%d:%d:%d] >%s", tm->tm_hour, tm->tm_min, tm->tm_sec, buf);
 				parseline(srv, buf);
 			}
 		} else {
