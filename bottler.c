@@ -222,6 +222,8 @@ void urljobs(FILE *srv, struct command c) {
 }
 
 void corejobs(FILE *srv, struct command c) {
+	char *channel;
+
 	if (!strncmp("!h", c.msg, 2)) {
 		sendf(srv, "PRIVMSG %s :Usage: !h help, !j join, !p part, !o owner",
 				c.par[0] == '#'  ? c.par : c.nick);
@@ -231,12 +233,26 @@ void corejobs(FILE *srv, struct command c) {
 				owner);
 	} else if (!strcmp(c.mask, owner)) {
 		if (!strncmp("!j", c.msg, 2)) {
-			sendf(srv, "JOIN %s", c.msg+3);
+			if (c.msg[3] == '#')
+				sendf(srv, "JOIN %s", c.msg+3);
+			else {
+				channel = emalloc(strlen(c.msg+3) + 1);
+				sprintf(channel, "#%s", c.msg+3);
+				sendf(srv, "JOIN %s", channel);
+				free(channel);
+			}
 		} else if (!strcmp("!p", c.msg)) {
 			if (c.par[0] == '#')
 				sendf(srv, "PART %s", c.par);
 		} else if (!strncmp("!p ", c.msg, 3)) {
-			sendf(srv, "PART %s", c.msg+3);
+			if (c.msg[3] == '#')
+				sendf(srv, "PART %s", c.msg+3);
+			else {
+				channel = emalloc(strlen(c.msg+3) + 1);
+				sprintf(channel, "#%s", c.msg+3);
+				sendf(srv, "PART %s", channel);
+				free(channel);
+			}
 		}
 	}
 }
