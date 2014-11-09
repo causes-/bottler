@@ -255,7 +255,7 @@ char *replace_str2(const char *str, const char *old, const char *new) {
 }
 
 char *replacehtmlentities(char *str) {
-    int i;
+	int i;
 	char *tmp = NULL;
 	char *tmp2 = str;
 
@@ -274,14 +274,14 @@ char *replacehtmlentities(char *str) {
 		{ "&euro;", "€" },
 		{ "&trade;", "™" },
 		{ NULL, NULL },
-    };
+	};
 
-    for (i = 0; entities[i].entity; i++) {
+	for (i = 0; entities[i].entity; i++) {
 		tmp = replace_str2(tmp2, entities[i].entity, entities[i].substitute);
 		if (i)
 			free(tmp2);
 		tmp2 = tmp;
-    }
+	}
 
 	return tmp2;
 }
