@@ -284,7 +284,7 @@ char *replacehtmlentities(char *str) {
 		{ "&gt;", ">" },
 		{ "&ast;", "*" },
 		{ "&plus;", "+" },
-		{ "&comma;	", "," },
+		{ "&comma;", "," },
 		{ "&period;", "." },
 		{ "&colon;", ":" },
 		{ "&semi;", ";" },
