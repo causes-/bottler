@@ -2,18 +2,23 @@ CFLAGS+=-std=c99 -pedantic -Wall -Wextra
 LDLIBS=-lcurl
 
 BIN=bottler
-OBJ=config.h
+OBJ=util.o urljobs.o bottler.o
+CFG=config.h
 
-all: $(OBJ) $(BIN)
+$(BIN): $(OBJ)
+
+$(OBJ): $(CFG)
+
+all: $(BIN)
 
 config.h:
 	cp config.def.h config.h
 
 clean:
-	rm -f $(BIN)
+	rm -f $(BIN) $(OBJ)
 
 distclean:
-	rm -f $(OBJ) $(BIN)
+	rm -f $(BIN) $(OBJ) $(CFG)
 
 install: all
 	mkdir -p $(DESTDIR)/usr/bin

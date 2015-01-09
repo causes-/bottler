@@ -12,7 +12,7 @@ commands
 configuration
 -------------
 Configuration is done by editing config.h and rebuilding
-or you can use command-line arguments.
+or by command-line arguments.
 
 example:
 // server hostname
