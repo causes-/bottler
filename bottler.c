@@ -319,12 +319,17 @@ char *replacehtmlentities(char *str) {
 
 void urljobs(FILE *srv, struct command c) {
 	char *url, *title;
+	char *p;
+
 	if (!strncmp("#", c.par, 1)) {
 		url = c.msg;
-		if (!strncmp(url, "http://", 7) ||
-				!strncmp(url, "https://", 8) ||
-				!strncmp(url, "www.", 4)) {
-			url = estrdup(url);
+		p = strcasestr(url, "http://");
+		if (!p)
+			p = strcasestr(url, "https://");
+		if (!p)
+			p = strcasestr(url, "www.");
+		if (p) {
+			url = estrdup(p);
 			skip(url, ' ');
 			trim(url);
 			title = gettitle(url);
