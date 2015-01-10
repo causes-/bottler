@@ -8,6 +8,7 @@
 
 #include "util.h"
 #include "gettitle.h"
+#include "htmlentities.h"
 
 static char *getxmlstr(char *s, char *t) {
 	char *b = emalloc(strlen(t) + 3);
@@ -104,54 +105,6 @@ static char *replacehtmlentities(char *str) {
 	int i;
 	char *tmp = NULL;
 	char *tmp2 = str;
-
-	struct entity {
-		char *entity;
-		char *substitute;
-	} entities[] = {
-		{ "&nbsp;", " " },
-		{ "&auml;", "ä" },
-		{ "&Auml;", "Ä" },
-		{ "&ouml;", "ö" },
-		{ "&Ouml;", "Ö" },
-		{ "&aring;", "å" },
-		{ "&Aring;", "Å" },
-		{ "&excl;", "!" },
-		{ "&quest;", "?" },
-		{ "&amp;", "&" },
-		{ "&num;", "#" },
-		{ "&quot;", "\"" },
-		{ "&apos;", "'" },
-		{ "&#39;", "'" },
-		{ "&percnt;", "%" },
-		{ "&lpar;", "(" },
-		{ "&rpar;", ")" },
-		{ "&lt;", "<" },
-		{ "&gt;", ">" },
-		{ "&ast;", "*" },
-		{ "&plus;", "+" },
-		{ "&comma;", "," },
-		{ "&period;", "." },
-		{ "&colon;", ":" },
-		{ "&semi;", ";" },
-		{ "&equals;", "=" },
-		{ "&sol;", "/" },
-		{ "&bsol;", "\\" },
-		{ "&commat;", "@" },
-		{ "&lbrack;", "[" },
-		{ "&rbrack;", "]" },
-		{ "&lbrace;", "{" },
-		{ "&rbrace;", "}" },
-		{ "&sect;", "§" },
-		{ "&copy;", "©" },
-		{ "&reg;", "®" },
-		{ "&amp;", "&" },
-		{ "&dollar;", "$" },
-		{ "&euro;", "€" },
-		{ "&trade;", "™" },
-		{ "&ndash;", "–" },
-		{ NULL, NULL },
-	};
 
 	for (i = 0; entities[i].entity; i++) {
 		tmp = replace_str2(tmp2, entities[i].entity, entities[i].substitute);
