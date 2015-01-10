@@ -3,19 +3,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
-#include <stdarg.h>
-#include <stdbool.h>
 #include <string.h>
-#include <ctype.h>
-#include <time.h>
-#include <unistd.h>
 #include <curl/curl.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netdb.h>
 
 #include "util.h"
-#include "urljobs.h"
+#include "gettitle.h"
 
 static char *getxmlstr(char *s, char *t) {
 	char *b = emalloc(strlen(t) + 3);
@@ -54,41 +46,6 @@ static size_t curlcallback(void *contents, size_t size, size_t nmemb, void *user
 	mem->memory[mem->size] = 0;
 
 	return realsize;
-}
-
-static char *gettitle(char *url) {
-	char *title = NULL;
-	CURL *curl_handle;
-	CURLcode res;
-
-	struct htmldata data;
-
-	data.memory = malloc(1);
-	data.size = 0;
-
-	curl_global_init(CURL_GLOBAL_ALL);
-	curl_handle = curl_easy_init();
-
-	/* specify URL to get */ 
-	curl_easy_setopt(curl_handle, CURLOPT_URL, url);
-	/* send all data to this function  */ 
-	curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, curlcallback);
-	/* we pass our 'data' struct to the callback function */ 
-	curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)&data);
-	curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
-	res = curl_easy_perform(curl_handle);
-
-	if (res != CURLE_OK)
-		fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
-	else
-		title = getxmlstr(data.memory, "title");
-
-	curl_easy_cleanup(curl_handle);
-	if (data.memory)
-		free(data.memory);
-	curl_global_cleanup();
-
-	return title;
 }
 
 // taken from http://creativeandcritical.net/str-replace-c/
@@ -206,27 +163,40 @@ static char *replacehtmlentities(char *str) {
 	return tmp2;
 }
 
-void urljobs(FILE *srv, struct command c) {
-	char *url;
-	char *title;
+char *gettitle(char *url) {
+	char *title = NULL;
+	CURL *curl_handle;
+	CURLcode res;
 
-	if (!strncmp("#", c.par, 1)) {
-		url = strcasestr(c.msg, "http://");
-		if (!url)
-			url = strcasestr(c.msg, "https://");
-		if (!url)
-			url = strcasestr(c.msg, "www.");
-		if (url) {
-			url = estrdup(url);
-			skip(url, ' ');
-			trim(url);
-			title = gettitle(url);
-			if (title) {
-				title = replacehtmlentities(title);
-				sendf(srv, "PRIVMSG %s :%s", c.par, title);
-				free(title);
-			}
-			free(url);
-		}
-	}
+	struct htmldata data;
+
+	data.memory = malloc(1);
+	data.size = 0;
+
+	curl_global_init(CURL_GLOBAL_ALL);
+	curl_handle = curl_easy_init();
+
+	/* specify URL to get */ 
+	curl_easy_setopt(curl_handle, CURLOPT_URL, url);
+	/* send all data to this function  */ 
+	curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, curlcallback);
+	/* we pass our 'data' struct to the callback function */ 
+	curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)&data);
+	curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
+	res = curl_easy_perform(curl_handle);
+
+	if (res != CURLE_OK)
+		fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+	else
+		title = getxmlstr(data.memory, "title");
+
+	curl_easy_cleanup(curl_handle);
+	if (data.memory)
+		free(data.memory);
+	curl_global_cleanup();
+
+	if (title)
+		title = replacehtmlentities(title);
+
+	return title;
 }

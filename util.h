@@ -17,10 +17,4 @@ void *erealloc(void *p, size_t size);
 
 void *estrdup(void *p);
 
-char *skip(char *s, char c);
-
-void trim(char *s);
-
-int sendf(FILE *srv, char *fmt, ...);
-
 #endif

@@ -2,16 +2,35 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
+#include <ctype.h>
 #include <unistd.h>
 #include <time.h>
 #include <netdb.h>
 
 #include "config.h"
 #include "util.h"
-#include "urljobs.h"
+#include "gettitle.h"
 
 #define VERSION "0.2"
+
+char *skip(char *s, char c) {
+	while(*s != c && *s != '\0')
+		s++;
+	if(*s != '\0')
+		*s = '\0';
+	return ++s;
+}
+
+void trim(char *s) {
+	char *e;
+
+	e = s + strlen(s) - 1;
+	while(isspace(*e) && e > s)
+		e--;
+	*(e + 1) = '\0';
+}
 
 int dial(const char *host, const char *port) {
 	int fd;
@@ -40,6 +59,23 @@ int dial(const char *host, const char *port) {
 	return fd;
 }
 
+int sendf(FILE *srv, char *fmt, ...) {
+	char buf[BUFSIZ];
+	va_list ap;
+	time_t t;
+	struct tm *tm;
+
+	va_start(ap, fmt);
+	vsnprintf(buf, sizeof buf, fmt, ap);
+	va_end(ap);
+
+	t = time(NULL);
+	tm = localtime(&t);
+	printf("[%.2d:%.2d:%.2d] <%s\n", tm->tm_hour, tm->tm_min, tm->tm_sec, buf);
+
+	return fprintf(srv, "%s\r\n", buf);
+}
+
 void corejobs(FILE *srv, struct command c) {
 	char *channel;
 
@@ -48,15 +84,14 @@ void corejobs(FILE *srv, struct command c) {
 				c.par[0] == '#'  ? c.par : c.nick);
 	} else if (!strncmp("!o", c.msg, 2)) {
 		sendf(srv, "PRIVMSG %s :My owner: %s",
-				c.par[0] == '#'  ? c.par : c.nick,
-				owner);
+				c.par[0] == '#'  ? c.par : c.nick, owner);
 	} else if (!strcmp(c.mask, owner)) {
 		if (!strncmp("!j", c.msg, 2)) {
 			if (c.msg[3] == '#')
-				sendf(srv, "JOIN %s", c.msg+3);
+				sendf(srv, "JOIN %s", c.msg + 3);
 			else {
-				channel = emalloc(strlen(c.msg+3) + 1);
-				sprintf(channel, "#%s", c.msg+3);
+				channel = emalloc(strlen(c.msg + 3) + 1);
+				sprintf(channel, "#%s", c.msg + 3);
 				sendf(srv, "JOIN %s", channel);
 				free(channel);
 			}
@@ -65,13 +100,37 @@ void corejobs(FILE *srv, struct command c) {
 				sendf(srv, "PART %s", c.par);
 		} else if (!strncmp("!p ", c.msg, 3)) {
 			if (c.msg[3] == '#')
-				sendf(srv, "PART %s", c.msg+3);
+				sendf(srv, "PART %s", c.msg + 3);
 			else {
-				channel = emalloc(strlen(c.msg+3) + 1);
-				sprintf(channel, "#%s", c.msg+3);
+				channel = emalloc(strlen(c.msg + 3) + 1);
+				sprintf(channel, "#%s", c.msg + 3);
 				sendf(srv, "PART %s", channel);
 				free(channel);
 			}
+		}
+	}
+}
+
+void urljobs(FILE *srv, struct command c) {
+	char *url;
+	char *title;
+
+	if (!strncmp("#", c.par, 1)) {
+		url = strcasestr(c.msg, "http://");
+		if (!url)
+			url = strcasestr(c.msg, "https://");
+		if (!url)
+			url = strcasestr(c.msg, "www.");
+		if (url) {
+			url = estrdup(url);
+			skip(url, ' ');
+			trim(url);
+			title = gettitle(url);
+			if (title) {
+				sendf(srv, "PRIVMSG %s :%s", c.par, title);
+				free(title);
+			}
+			free(url);
 		}
 	}
 }
@@ -102,6 +161,7 @@ void parseline(FILE *srv, char *line) {
 		sendf(srv, "PONG %s", c.msg);
 
 	corejobs(srv, c);
+
 	urljobs(srv, c);
 }
 

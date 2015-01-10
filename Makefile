@@ -2,7 +2,7 @@ CFLAGS+=-std=c99 -pedantic -Wall -Wextra
 LDLIBS=-lcurl
 
 BIN=bottler
-OBJ=util.o urljobs.o bottler.o
+OBJ=util.o gettitle.o bottler.o
 CFG=config.h
 
 $(BIN): $(OBJ)
