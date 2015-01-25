@@ -6,6 +6,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <ctype.h>
+#include <signal.h>
 #include <unistd.h>
 #include <time.h>
 #include <netdb.h>
@@ -15,6 +16,13 @@
 #include "gettitle.h"
 
 #define VERSION "0.2"
+
+bool terminate = false;
+
+void sighandler(int sig) {
+	terminate = true;
+	puts("Terminating...");
+}
 
 char *skip(char *s, char c) {
 	if (!s)
@@ -239,18 +247,19 @@ int main(int argc, char **argv) {
 	if (!nick)
 		eprintf("you need to specify nick\n");
 
-	while (1) {
+	signal(SIGINT, sighandler);
+
+	while (!terminate) {
 		if (!srv) {
-			if (!fd) {
-				fd = dial(host, port);
-				if (fd == -1) {
-					fprintf(stderr, "Failed to connect to %s:%s.\n", host, port);
-					fprintf(stderr, "Retrying in 15 seconds...\n");
-					sleep(15);
-					continue;
-				} else {
-					printf("connected to %s:%s\n", host, port);
-				}
+			close(fd);
+			fd = dial(host, port);
+			if (fd == -1) {
+				fprintf(stderr, "Failed to connect to %s:%s.\n", host, port);
+				fprintf(stderr, "Retrying in 15 seconds...\n");
+				sleep(15);
+				continue;
+			} else {
+				printf("connected to %s:%s\n", host, port);
 			}
 
 			srv = fdopen(fd, "r+");
@@ -271,7 +280,6 @@ int main(int argc, char **argv) {
 					fprintf(stderr, "Host closed connection.\n");
 					fprintf(stderr, "Retrying in 15 seconds...\n");
 					fclose(srv);
-					close(fd);
 					sleep(15);
 					continue;
 				}
@@ -281,4 +289,8 @@ int main(int argc, char **argv) {
 			sendf(srv, "PING %s", host);
 		}
 	}
+
+	sendf(srv, "QUIT :Terminating");
+	fclose(srv);
+	close(fd);
 }
