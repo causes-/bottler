@@ -1,20 +1,20 @@
 Bottler
 =======
 Simple irc bot made in C.
-It can join, part and fetch url titles.
-Configuration is done by editing config.h and rebuilding.
-You can also pass options via command-line arguments.
 
-Commands
+Features
 --------
-!h help, !v version, !o owner, !j join, !p part
+* Basic commands (!h help, !v version, !o owner, !j join, !p part)
+* Fetch URL titles
+* Autoreconnect (with bottler-autoreconnect)
+* Autojoin
 
 Configuration
 -------------
 Configuration is done by editing config.h and rebuilding
 or by command-line arguments.
 
-example:
+Example config.h:
 // server hostname
 char *host = "irc.quakenet.org";
 
@@ -29,3 +29,6 @@ char *name = "bottler irc bot";
 
 // bot owner
 char *owner = "~causes@8.28.87.203";
+
+// autojoin channels
+char *channels = "#channel #another #third";

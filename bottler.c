@@ -32,7 +32,7 @@ void trim(char *s) {
 	char *e;
 
 	e = s + strlen(s) - 1;
-	while(isspace(*e) && e > s)
+	while (isspace(*e) && e > s)
 		e--;
 	*(e + 1) = '\0';
 }
@@ -100,6 +100,23 @@ void joinpart(FILE *srv, char *chan, bool join) {
 	}
 }
 
+void autojoin(FILE *srv) {
+	char *rest;
+
+	while (1) {
+		rest = skip(channels, ' ');
+
+		if (channels[0] == '\0') {
+			channels = NULL;
+			break;
+		}
+
+		joinpart(srv, channels, true);
+
+		channels = rest;
+	}
+}
+
 void corejobs(FILE *srv, struct command c) {
 	if (!strncmp(nick, c.msg, strlen(nick))) {
 		sendf(srv, "PRIVMSG %s :Try !h for help",
@@ -114,12 +131,12 @@ void corejobs(FILE *srv, struct command c) {
 		sendf(srv, "PRIVMSG %s :My owner: %s",
 				c.par[0] == '#'  ? c.par : c.nick, owner);
 	} else if (!strcmp(c.mask, owner)) {
-		if (strlen(c.msg) > 3 && !strncmp("!j", c.msg, 2)) {
+		if (!strncmp("!j", c.msg, 2) && strlen(c.msg) > 3) {
 			joinpart(srv, c.msg + 3, true);
-		} else if (strlen(c.msg) > 1 && !strncmp("!p", c.msg, 2)) {
+		} else if (!strncmp("!p", c.msg, 2)) {
 			if (c.par[0] == '#')
 				sendf(srv, "PART %s", c.par);
-		} else if (strlen(c.msg) > 3 && !strncmp("!p ", c.msg, 3)) {
+		} else if (!strncmp("!p ", c.msg, 3) && strlen(c.msg) > 3) {
 			joinpart(srv, c.msg + 3, false);
 		}
 	}
@@ -146,24 +163,6 @@ void urljobs(FILE *srv, struct command c) {
 			}
 			free(url);
 		}
-	}
-}
-
-void autojoin(FILE *srv) {
-	char *rest = "1";
-
-	while (1) {
-		rest = skip(channels, ' ');
-		printf("channels:%s rest:%s\n", channels, rest);
-
-		if (channels[0] == '\0') {
-			channels = NULL;
-			break;
-		}
-
-		joinpart(srv, channels, true);
-
-		channels = rest;
 	}
 }
 
@@ -242,10 +241,12 @@ int main(int argc, char **argv) {
 
 	if (!port)
 		port = "6667";
+	if (!name)
+		name = "Bottler IRC-bot " VERSION;
 	if (!host)
 		eprintf("you need to specify host\n");
-	if (!nick || !name)
-		eprintf("you need to specify nick and name\n");
+	if (!nick)
+		eprintf("you need to specify nick\n");
 	if (!owner)
 		eprintf("you need to specify owner\n");
 
@@ -267,7 +268,7 @@ int main(int argc, char **argv) {
 		FD_ZERO(&readfds);
 		FD_SET(fileno(srv), &readfds);
 
-		if (select(fileno(srv) + 1, &readfds, 0, 0, &(struct timeval){120, 0})) {
+		if (select(fileno(srv) + 1, &readfds, 0, 0, &(struct timeval) {120, 0})) {
 			if (FD_ISSET(fileno(srv), &readfds)) {
 				if (!fgets(buf, sizeof buf, srv))
 					eprintf("host closed connection\n");
