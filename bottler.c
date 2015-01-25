@@ -13,7 +13,7 @@
 #include "util.h"
 #include "gettitle.h"
 
-#define VERSION "0.2"
+#define VERSION "0.1"
 
 char *skip(char *s, char c) {
 	while(*s != c && *s != '\0')
@@ -79,14 +79,20 @@ int sendf(FILE *srv, char *fmt, ...) {
 void corejobs(FILE *srv, struct command c) {
 	char *channel;
 
-	if (!strncmp("!h", c.msg, 2)) {
-		sendf(srv, "PRIVMSG %s :Usage: !h help, !j join, !p part, !o owner",
+	if (!strncmp(nick, c.msg, strlen(nick))) {
+		sendf(srv, "PRIVMSG %s :Try !h for help",
 				c.par[0] == '#'  ? c.par : c.nick);
+	} else if (!strncmp("!h", c.msg, 2)) {
+		sendf(srv, "PRIVMSG %s :Usage: !h help, !v version, !o owner, !j join, !p part",
+				c.par[0] == '#'  ? c.par : c.nick);
+	} else if (!strncmp("!v", c.msg, 2)) {
+		sendf(srv, "PRIVMSG %s :Bottler IRC-bot %s",
+				c.par[0] == '#'  ? c.par : c.nick, VERSION);
 	} else if (!strncmp("!o", c.msg, 2)) {
 		sendf(srv, "PRIVMSG %s :My owner: %s",
 				c.par[0] == '#'  ? c.par : c.nick, owner);
 	} else if (!strcmp(c.mask, owner)) {
-		if (!strncmp("!j", c.msg, 2)) {
+		if (strlen(c.msg) > 3 && !strncmp("!j", c.msg, 2)) {
 			if (c.msg[3] == '#')
 				sendf(srv, "JOIN %s", c.msg + 3);
 			else {
@@ -95,10 +101,10 @@ void corejobs(FILE *srv, struct command c) {
 				sendf(srv, "JOIN %s", channel);
 				free(channel);
 			}
-		} else if (!strcmp("!p", c.msg)) {
+		} else if (strlen(c.msg) > 1 && !strncmp("!p", c.msg, 2)) {
 			if (c.par[0] == '#')
 				sendf(srv, "PART %s", c.par);
-		} else if (!strncmp("!p ", c.msg, 3)) {
+		} else if (strlen(c.msg) > 3 && !strncmp("!p ", c.msg, 3)) {
 			if (c.msg[3] == '#')
 				sendf(srv, "PART %s", c.msg + 3);
 			else {
@@ -115,7 +121,7 @@ void urljobs(FILE *srv, struct command c) {
 	char *url;
 	char *title;
 
-	if (!strncmp("#", c.par, 1)) {
+	if (c.par[0] == '#') {
 		url = strcasestr(c.msg, "http://");
 		if (!url)
 			url = strcasestr(c.msg, "https://");
