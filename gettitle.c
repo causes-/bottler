@@ -49,53 +49,30 @@ static size_t curlcallback(void *contents, size_t size, size_t nmemb, void *user
 	return realsize;
 }
 
-// taken from http://creativeandcritical.net/str-replace-c/
-static char *replace_str2(const char *str, const char *old, const char *new) {
+char *strrep(const char *str, const char *old, const char *new) {
+	size_t oldlen, newlen, retlen;
+	ptrdiff_t sharedlen;
 	char *ret, *r;
-	const char *p, *q;
-	size_t oldlen = strlen(old);
-	size_t count, retlen, newlen = strlen(new);
-	int samesize = (oldlen == newlen);
+	const char *p, *p2;
 
-	if (!samesize) {
-		for (count = 0, p = str; (q = strstr(p, old)) != NULL; p = q + oldlen)
-			count++;
-		/* This is undefined if p - str > PTRDIFF_MAX */
-		retlen = p - str + strlen(p) + count * (newlen - oldlen);
-	} else
-		retlen = strlen(str);
+	oldlen = strlen(old);
+	newlen = strlen(new);
+	retlen = strlen(str);
 
-	if ((ret = malloc(retlen + 1)) == NULL)
-		return NULL;
+	if (oldlen != newlen)
+		for (p = str; (p2 = strstr(p, old)); p = p2 + oldlen)
+			retlen += newlen - oldlen;
 
-	r = ret, p = str;
-	while (1) {
-		/* If the old and new strings are different lengths - in other
-		 * words we have already iterated through with strstr above,
-		 * and thus we know how many times we need to call it - then we
-		 * can avoid the final (potentially lengthy) call to strstr,
-		 * which we already know is going to return NULL, by
-		 * decrementing and checking count.
-		 */
-		if (!samesize && !count--)
-			break;
-		/* Otherwise i.e. when the old and new strings are the same
-		 * length, and we don't know how many times to call strstr,
-		 * we must check for a NULL return here (we check it in any
-		 * event, to avoid further conditions, and because there's
-		 * no harm done with the check even when the old and new
-		 * strings are different lengths).
-		 */
-		if ((q = strstr(p, old)) == NULL)
-			break;
-		/* This is undefined if q - p > PTRDIFF_MAX */
-		ptrdiff_t l = q - p;
-		memcpy(r, p, l);
-		r += l;
+	ret = malloc(retlen + 1);
+
+	for (p = str, r = ret; (p2 = strstr(p, old)); p = p2 + oldlen) {
+		sharedlen = p2 - p;
+		memcpy(r, p, sharedlen);
+		r += sharedlen;
 		memcpy(r, new, newlen);
 		r += newlen;
-		p = q + oldlen;
 	}
+
 	strcpy(r, p);
 
 	return ret;
@@ -107,7 +84,7 @@ static char *replacehtmlentities(char *str) {
 	char *tmp2 = str;
 
 	for (i = 0; entities[i].entity; i++) {
-		tmp = replace_str2(tmp2, entities[i].entity, entities[i].substitute);
+		tmp = strrep(tmp2, entities[i].entity, entities[i].substitute);
 		if (i)
 			free(tmp2);
 		tmp2 = tmp;
