@@ -11,17 +11,21 @@
 #include <time.h>
 #include <netdb.h>
 
+#include "arg.h"
 #include "config.h"
 #include "util.h"
 #include "gettitle.h"
 
 #define VERSION "0.2"
 
-bool terminate = false;
+static sig_atomic_t terminate;
+char *argv0;
 
 void sighandler(int sig) {
-	terminate = true;
-	puts("Terminating...");
+	if (sig == SIGINT) {
+		terminate = true;
+		puts("Terminating...");
+	}
 }
 
 char *skip(char *s, char c) {
@@ -201,42 +205,51 @@ void parseline(FILE *srv, char *line) {
 	}
 }
 
+void usage(void) {
+	eprintf("usage: %s [options]\n"
+			"\n"
+			"-h    help\n"
+			"-v    version\n"
+			"\n"
+			"-s <host>        server hostname\n"
+			"-p <port>        server port\n"
+			"-n <nick>        bot nickname\n"
+			"-u <name>        bot username\n"
+			"-o <owner>       bot owner\n"
+			"-c <channels>    autojoin channels\n"
+			, argv0);
+}
+
 int main(int argc, char **argv) {
-	int i;
 	char buf[BUFSIZ];
 	int fd = 0;
 	FILE *srv = NULL;
 	fd_set readfds;
 
-	for (i = 1; i < argc; i++) {
-		if (!strcmp("-v", argv[i]))
-			eprintf("%s-%s\n", argv[0], VERSION);
-		else if (argv[i+1] == NULL || argv[i+1][0] == '-')
-			eprintf("usage: %s [options]\n"
-					"\n"
-					"-h    help\n"
-					"-v    version\n"
-					"\n"
-					"-s <host>        server hostname\n"
-					"-p <port>        server port\n"
-					"-n <nick>        bot nickname\n"
-					"-u <name>        bot username\n"
-					"-o <owner>       bot owner\n"
-					"-c <channels>    autojoin channels\n"
-					, argv[0]);
-		else if (!strcmp("-s", argv[i]))
-			host = argv[++i];
-		else if (!strcmp("-p", argv[i]))
-			port = argv[++i];
-		else if (!strcmp("-n", argv[i]))
-			nick = argv[++i];
-		else if (!strcmp("-u", argv[i]))
-			name = argv[++i];
-		else if (!strcmp("-o", argv[i]))
-			owner = argv[++i];
-		else if (!strcmp("-c", argv[i]))
-			channels = argv[++i];
-	}
+	ARGBEGIN {
+		case 'v':
+			eprintf("%s-%s\n", argv0, VERSION);
+		case 's':
+			host = estrdup(EARGF(usage()));
+			break;
+		case 'p':
+			port = estrdup(EARGF(usage()));
+			break;
+		case 'n':
+			nick = estrdup(EARGF(usage()));
+			break;
+		case 'u':
+			name = estrdup(EARGF(usage()));
+			break;
+		case 'o':
+			owner = estrdup(EARGF(usage()));
+			break;
+		case 'c':
+			channels = estrdup(EARGF(usage()));
+			break;
+		default:
+			usage();
+	} ARGEND;
 
 	if (!port)
 		port = "6667";
