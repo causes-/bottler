@@ -6,7 +6,6 @@
 #include <stdarg.h>
 #include <string.h>
 #include <ctype.h>
-#include <signal.h>
 #include <unistd.h>
 #include <time.h>
 #include <netdb.h>
@@ -26,15 +25,7 @@ struct command {
 	char *msg;
 };
 
-static sig_atomic_t terminate;
 char *argv0;
-
-void sighandler(int sig) {
-	if (sig == SIGINT) {
-		terminate = true;
-		puts("Terminating...");
-	}
-}
 
 char *skip(char *s, char c) {
 	if (!s)
@@ -134,25 +125,35 @@ void autojoin(FILE *srv) {
 }
 
 void corejobs(FILE *srv, struct command c) {
-	if (!strncmp(nick, c.msg, strlen(nick))) {
-		sendf(srv, "PRIVMSG %s :Try !h for help",
-				c.par[0] == '#'  ? c.par : c.nick);
-	} else if (!strncmp("!h", c.msg, 2)) {
+	if (!strncmp(nick, c.msg, strlen(nick)))
+		sendf(srv, "PRIVMSG %s :Try !h for help", *c.par == '#'  ? c.par : c.nick);
+
+	if (c.msg[0] != '!')
+		return;
+
+	switch (c.msg[1]) {
+	case 'h':
 		sendf(srv, "PRIVMSG %s :Usage: !h help, !v version, !o owner, !j join, !p part",
-				c.par[0] == '#'  ? c.par : c.nick);
-	} else if (!strncmp("!v", c.msg, 2)) {
-		sendf(srv, "PRIVMSG %s :Bottler IRC-bot %s",
-				c.par[0] == '#'  ? c.par : c.nick, VERSION);
-	} else if (!strncmp("!o", c.msg, 2)) {
-		sendf(srv, "PRIVMSG %s :My owner: %s",
-				c.par[0] == '#'  ? c.par : c.nick, owner);
+				*c.par == '#'  ? c.par : c.nick);
+		break;
+	case 'v':
+		sendf(srv, "PRIVMSG %s :Bottler IRC-bot %s", *c.par == '#'  ? c.par : c.nick, VERSION);
+		break;
+	case 'o':
+		sendf(srv, "PRIVMSG %s :My owner: %s", *c.par == '#'  ? c.par : c.nick, owner);
+		break;
 	}
 
-	if (owner && !strcmp(c.mask, owner)) {
-		if (!strncmp("!j", c.msg, 2) && strlen(c.msg) > 3)
-			joinpart(srv, c.msg + 3, true);
-		else if (!strncmp("!p", c.msg, 2) &&  strlen(c.msg) > 3)
-			joinpart(srv, c.msg + 3, false);
+	if (!owner || !!strcmp(c.mask, owner))
+		return;
+
+	switch (c.msg[1]) {
+	case 'j':
+		joinpart(srv, c.msg + 3, true);
+		break;
+	case 'p':
+		joinpart(srv, c.msg + 3, false);
+		break;
 	}
 }
 
@@ -238,22 +239,22 @@ int main(int argc, char **argv) {
 	case 'v':
 		eprintf("%s-%s\n", argv0, VERSION);
 	case 's':
-		host = estrdup(EARGF(usage()));
+		host = EARGF(usage());
 		break;
 	case 'p':
-		port = estrdup(EARGF(usage()));
+		port = EARGF(usage());
 		break;
 	case 'n':
-		nick = estrdup(EARGF(usage()));
+		nick = EARGF(usage());
 		break;
 	case 'u':
-		name = estrdup(EARGF(usage()));
+		name = EARGF(usage());
 		break;
 	case 'o':
-		owner = estrdup(EARGF(usage()));
+		owner = EARGF(usage());
 		break;
 	case 'c':
-		channels = estrdup(EARGF(usage()));
+		channels = EARGF(usage());
 		break;
 	default:
 		usage();
@@ -268,9 +269,7 @@ int main(int argc, char **argv) {
 	if (!nick)
 		eprintf("you need to specify nick\n");
 
-	signal(SIGINT, sighandler);
-
-	while (!terminate) {
+	while (1) {
 		if (!srv) {
 			close(fd);
 			fd = dial(host, port);
@@ -301,6 +300,7 @@ int main(int argc, char **argv) {
 					fprintf(stderr, "Host closed connection.\n");
 					fprintf(stderr, "Retrying in 15 seconds...\n");
 					fclose(srv);
+					srv = NULL;
 					sleep(15);
 					continue;
 				}
@@ -314,4 +314,5 @@ int main(int argc, char **argv) {
 	sendf(srv, "QUIT :Terminating");
 	fclose(srv);
 	close(fd);
+	return EXIT_SUCCESS;
 }
