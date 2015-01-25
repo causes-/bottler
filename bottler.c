@@ -18,6 +18,14 @@
 
 #define VERSION "0.2"
 
+struct command {
+	char *nick;
+	char *mask;
+	char *cmd;
+	char *par;
+	char *msg;
+};
+
 static sig_atomic_t terminate;
 char *argv0;
 
