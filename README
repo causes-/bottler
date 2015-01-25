@@ -1,13 +1,13 @@
 Bottler
 =======
-Simple irc bot made in C.
+IRC-bot to fetch titles for URLs.
 
 Features
 --------
 * Basic commands (!h help, !v version, !o owner, !j join, !p part)
 * Fetch URL titles
-* Autoreconnect (with bottler-autoreconnect)
 * Autojoin
+* Autoreconnect
 
 Configuration
 -------------
@@ -25,7 +25,7 @@ char *port = "6667";
 char *nick = "bottler";
 
 // bot username
-char *name = "bottler irc bot";
+char *name = "Bottler IRC-bot";
 
 // bot owner
 char *owner = "~causes@8.28.87.203";

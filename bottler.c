@@ -227,28 +227,28 @@ int main(int argc, char **argv) {
 	fd_set readfds;
 
 	ARGBEGIN {
-		case 'v':
-			eprintf("%s-%s\n", argv0, VERSION);
-		case 's':
-			host = estrdup(EARGF(usage()));
-			break;
-		case 'p':
-			port = estrdup(EARGF(usage()));
-			break;
-		case 'n':
-			nick = estrdup(EARGF(usage()));
-			break;
-		case 'u':
-			name = estrdup(EARGF(usage()));
-			break;
-		case 'o':
-			owner = estrdup(EARGF(usage()));
-			break;
-		case 'c':
-			channels = estrdup(EARGF(usage()));
-			break;
-		default:
-			usage();
+	case 'v':
+		eprintf("%s-%s\n", argv0, VERSION);
+	case 's':
+		host = estrdup(EARGF(usage()));
+		break;
+	case 'p':
+		port = estrdup(EARGF(usage()));
+		break;
+	case 'n':
+		nick = estrdup(EARGF(usage()));
+		break;
+	case 'u':
+		name = estrdup(EARGF(usage()));
+		break;
+	case 'o':
+		owner = estrdup(EARGF(usage()));
+		break;
+	case 'c':
+		channels = estrdup(EARGF(usage()));
+		break;
+	default:
+		usage();
 	} ARGEND;
 
 	if (!port)
