@@ -47,9 +47,7 @@ void trim(char *s) {
 
 int dial(const char *host, const char *port) {
 	int fd;
-	struct addrinfo hints;
-	struct addrinfo *res = NULL;
-	struct addrinfo *r;
+	struct addrinfo hints, *res, *r;
 
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_UNSPEC;
@@ -171,9 +169,8 @@ void parseline(FILE *srv, char *line) {
 	skip(line, '\r');
 	printf("[%.2d:%.2d:%.2d] >%s\n", tm->tm_hour, tm->tm_min, tm->tm_sec, line);
 
+	memset(&c, 0, sizeof c);
 	c.cmd = line;
-	c.nick = host;
-	c.mask = "";
 	if (*c.cmd == ':') {
 		c.nick = c.cmd+1;
 		c.cmd = skip(c.nick, ' ');
