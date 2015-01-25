@@ -19,21 +19,31 @@
 bool connected = false;
 
 char *skip(char *s, char c) {
+	if (!s)
+		return NULL;
+
 	while (*s != c && *s != '\0')
 		s++;
-	if (*s != '\0')
-		*s = '\0';
+
+	if (*s == '\0')
+		return NULL;
 	else
-		return "";
+		*s = '\0';
+
 	return ++s;
 }
 
 void trim(char *s) {
 	char *e;
 
+	if (!s)
+		return;
+
 	e = s + strlen(s) - 1;
+
 	while (isspace(*e) && e > s)
 		e--;
+
 	*(e + 1) = '\0';
 }
 
@@ -103,13 +113,8 @@ void joinpart(FILE *srv, char *chan, bool join) {
 void autojoin(FILE *srv) {
 	char *rest;
 
-	while (1) {
+	while (channels) {
 		rest = skip(channels, ' ');
-
-		if (channels[0] == '\0') {
-			channels = NULL;
-			break;
-		}
 
 		joinpart(srv, channels, true);
 
@@ -134,10 +139,10 @@ void corejobs(FILE *srv, struct command c) {
 		if (!strncmp("!j", c.msg, 2) && strlen(c.msg) > 3) {
 			joinpart(srv, c.msg + 3, true);
 		} else if (!strncmp("!p", c.msg, 2)) {
-			if (c.par[0] == '#')
+			if (strlen(c.msg) > 3 && c.msg[2] == ' ')
+				joinpart(srv, c.msg + 3, false);
+			else if (c.par[0] == '#')
 				sendf(srv, "PART %s", c.par);
-		} else if (!strncmp("!p ", c.msg, 3) && strlen(c.msg) > 3) {
-			joinpart(srv, c.msg + 3, false);
 		}
 	}
 }
@@ -188,18 +193,16 @@ void parseline(FILE *srv, char *line) {
 	c.msg = skip(c.par, ':');
 	trim(c.par);
 
-	if (!strcmp("PING", c.cmd))
-		sendf(srv, "PONG %s", c.msg);
-
-	if (!strcmp("MODE", c.cmd))
-		connected = 1;
-
-	if (channels && connected)
+	if (c.cmd && channels && !strcmp("MODE", c.cmd))
 		autojoin(srv);
 
-	corejobs(srv, c);
+	if (c.cmd && c.msg && !strcmp("PING", c.cmd))
+		sendf(srv, "PONG %s", c.msg);
 
-	urljobs(srv, c);
+	if (c.nick && c.mask && c.cmd && c.par && c.msg) {
+		corejobs(srv, c);
+		urljobs(srv, c);
+	}
 }
 
 int main(int argc, char **argv) {
