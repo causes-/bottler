@@ -196,8 +196,8 @@ void parseline(FILE *srv, char *line) {
 int main(int argc, char **argv) {
 	int i;
 	char buf[BUFSIZ];
-	int fd;
-	FILE *srv;
+	int fd = 0;
+	FILE *srv = NULL;
 	fd_set readfds;
 
 	for (i = 1; i < argc; i++) {
@@ -239,28 +239,42 @@ int main(int argc, char **argv) {
 	if (!nick)
 		eprintf("you need to specify nick\n");
 
-	fd = dial(host, port);
-	if (fd == -1)
-		eprintf("failed to connect to %s:%s\n", host, port);
-	else
-		printf("connected to %s:%s\n", host, port);
-
-	srv = fdopen(fd, "r+");
-
-	sendf(srv, "NICK %s", nick);
-	sendf(srv, "USER %s 0 * :%s", nick, name);
-
-	fflush(srv);
-	setbuf(srv, NULL);
-
 	while (1) {
+		if (!srv) {
+			if (!fd) {
+				fd = dial(host, port);
+				if (fd == -1) {
+					fprintf(stderr, "Failed to connect to %s:%s.\n", host, port);
+					fprintf(stderr, "Retrying in 15 seconds...\n");
+					sleep(15);
+					continue;
+				} else {
+					printf("connected to %s:%s\n", host, port);
+				}
+			}
+
+			srv = fdopen(fd, "r+");
+
+			sendf(srv, "NICK %s", nick);
+			sendf(srv, "USER %s 0 * :%s", nick, name);
+
+			fflush(srv);
+			setbuf(srv, NULL);
+		}
+
 		FD_ZERO(&readfds);
 		FD_SET(fileno(srv), &readfds);
 
 		if (select(fileno(srv) + 1, &readfds, 0, 0, &(struct timeval) {120, 0})) {
 			if (FD_ISSET(fileno(srv), &readfds)) {
-				if (!fgets(buf, sizeof buf, srv))
-					eprintf("host closed connection\n");
+				if (!fgets(buf, sizeof buf, srv)) {
+					fprintf(stderr, "Host closed connection.\n");
+					fprintf(stderr, "Retrying in 15 seconds...\n");
+					fclose(srv);
+					close(fd);
+					sleep(15);
+					continue;
+				}
 				parseline(srv, buf);
 			}
 		} else {
