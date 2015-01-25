@@ -1,15 +1,15 @@
-bottler
--------
+Bottler
+=======
 Simple irc bot made in C.
 It can join, part and fetch url titles.
 Configuration is done by editing config.h and rebuilding.
-You can also pass options via commandline parameters.
+You can also pass options via command-line arguments.
 
-commands
+Commands
 --------
-!h help, !j join, !p part, !o owner
+!h help, !v version, !o owner, !j join, !p part
 
-configuration
+Configuration
 -------------
 Configuration is done by editing config.h and rebuilding
 or by command-line arguments.
