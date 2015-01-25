@@ -25,8 +25,8 @@ struct write_result {
 static size_t write_response(void *ptr, size_t size, size_t nmemb, void *stream) {
 	struct write_result *result = (struct write_result *)stream;
 
-	if(result->pos + size * nmemb >= BUFFER_SIZE - 1)
-		eprintf("error: too small buffer\n");
+	if (result->pos + size * nmemb >= BUFFER_SIZE - 1)
+		eprintf("too small buffer\n");
 
 	memcpy(result->data + result->pos, ptr, size * nmemb);
 	result->pos += size * nmemb;
@@ -56,12 +56,12 @@ static char *request(const char *url) {
 
 	status = curl_easy_perform(curl);
 	if (status != 0)
-		eprintf("error: unable to request data from %s:\n"
+		eprintf("unable to request data from %s:\n"
 				"%s\n", url, curl_easy_strerror(status));
 
 	curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
 	if(code != 200)
-		eprintf("error: server responded with code %ld\n", code);
+		eprintf("server responded with code %ld\n", code);
 
 	curl_easy_cleanup(curl);
 	curl_global_cleanup();
@@ -121,7 +121,7 @@ static char *replace_str2(const char *str, const char *old, const char *new) {
 char *escapeformatspecifiers(const char *src) {
 	int i;
 	char *tmp = NULL;
-	char *tmp2 = src;
+	char *tmp2 = (char *) src;
 
 	struct formatspecifiers {
 		char *specifier;
@@ -155,16 +155,16 @@ int main(void) {
 	char *chartmp;
 
 	text = request(url);
-	if(!text)
+	if (!text)
 		return 1;
 
 	root = json_loads(text, 0, &error);
 	free(text);
 
 	if (!root)
-		eprintf("error: on line %d: %s\n", error.line, error.text);
+		eprintf("line %d: %s\n", error.line, error.text);
 	if (!json_is_object(root))
-		eprintf("error: root is not an object\n");
+		eprintf("not an object\n");
 
 	puts("#ifndef HTMLENTITIES_H");
 	puts("#define HTMLENTITIES_H\n");
@@ -175,8 +175,8 @@ int main(void) {
 	json_object_foreach(root, key, value) {
 		characters = json_object_get(value, "characters");
 		codepoints = json_object_get(value, "codepoints");
-		if(!json_is_array(codepoints))
-			puts("not an array");
+		if (!json_is_array(codepoints))
+			eprintf("not an array");
 		chartmp = escapeformatspecifiers(json_string_value(characters));
 		printf("\t{ \"%s\", \"%s\" },\n", key, chartmp);
 		json_array_foreach(codepoints, index, arrvalue) {
