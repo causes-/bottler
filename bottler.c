@@ -101,13 +101,16 @@ void joinpart(FILE *srv, char *chan, bool join) {
 }
 
 void autojoin(FILE *srv) {
-	char *rest;
+	char *chanlist, *p, *p2;
 
-	while (channels) {
-		rest = skip(channels, ' ');
-		joinpart(srv, channels, true);
-		channels = rest;
+	chanlist = estrdup(channels);
+
+	for (p = chanlist; p; p = p2) {
+		p2 = skip(p, ' ');
+		joinpart(srv, p, true);
 	}
+
+	free(chanlist);
 }
 
 void corejobs(FILE *srv, struct command c) {
@@ -123,15 +126,13 @@ void corejobs(FILE *srv, struct command c) {
 	} else if (!strncmp("!o", c.msg, 2)) {
 		sendf(srv, "PRIVMSG %s :My owner: %s",
 				c.par[0] == '#'  ? c.par : c.nick, owner);
-	} else if (!strcmp(c.mask, owner)) {
-		if (!strncmp("!j", c.msg, 2) && strlen(c.msg) > 3) {
+	}
+
+	if (owner && !strcmp(c.mask, owner)) {
+		if (!strncmp("!j", c.msg, 2) && strlen(c.msg) > 3)
 			joinpart(srv, c.msg + 3, true);
-		} else if (!strncmp("!p", c.msg, 2)) {
-			if (strlen(c.msg) > 3 && c.msg[2] == ' ')
-				joinpart(srv, c.msg + 3, false);
-			else if (c.par[0] == '#')
-				sendf(srv, "PART %s", c.par);
-		}
+		else if (!strncmp("!p", c.msg, 2) &&  strlen(c.msg) > 3)
+			joinpart(srv, c.msg + 3, false);
 	}
 }
 
@@ -180,7 +181,7 @@ void parseline(FILE *srv, char *line) {
 	c.msg = skip(c.par, ':');
 	trim(c.par);
 
-	if (c.cmd && channels && !strcmp("MODE", c.cmd))
+	if (c.cmd && c.nick && channels && !strcmp("MODE", c.cmd) && !strcmp(nick, c.nick))
 		autojoin(srv);
 
 	if (c.cmd && c.msg && !strcmp("PING", c.cmd))
@@ -237,8 +238,6 @@ int main(int argc, char **argv) {
 		eprintf("you need to specify host\n");
 	if (!nick)
 		eprintf("you need to specify nick\n");
-	if (!owner)
-		eprintf("you need to specify owner\n");
 
 	fd = dial(host, port);
 	if (fd == -1)
