@@ -16,4 +16,7 @@ char *name = NULL;
 // bot owner
 char *owner = NULL;
 
+// autojoin channels
+char *channels = NULL;
+
 #endif

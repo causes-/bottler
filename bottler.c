@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <stdarg.h>
 #include <string.h>
 #include <ctype.h>
@@ -13,13 +14,17 @@
 #include "util.h"
 #include "gettitle.h"
 
-#define VERSION "0.1"
+#define VERSION "0.2"
+
+bool connected = false;
 
 char *skip(char *s, char c) {
-	while(*s != c && *s != '\0')
+	while (*s != c && *s != '\0')
 		s++;
-	if(*s != '\0')
+	if (*s != '\0')
 		*s = '\0';
+	else
+		return "";
 	return ++s;
 }
 
@@ -76,9 +81,26 @@ int sendf(FILE *srv, char *fmt, ...) {
 	return fprintf(srv, "%s\r\n", buf);
 }
 
-void corejobs(FILE *srv, struct command c) {
+void joinpart(FILE *srv, char *chan, bool join) {
 	char *channel;
 
+	if (chan[0] == '#') {
+		if (join)
+			sendf(srv, "JOIN %s", chan);
+		else
+			sendf(srv, "PART %s", chan);
+	} else {
+		channel = emalloc(strlen(chan) + 1);
+		sprintf(channel, "#%s", chan);
+		if (join)
+			sendf(srv, "JOIN %s", channel);
+		else
+			sendf(srv, "PART %s", channel);
+		free(channel);
+	}
+}
+
+void corejobs(FILE *srv, struct command c) {
 	if (!strncmp(nick, c.msg, strlen(nick))) {
 		sendf(srv, "PRIVMSG %s :Try !h for help",
 				c.par[0] == '#'  ? c.par : c.nick);
@@ -93,26 +115,12 @@ void corejobs(FILE *srv, struct command c) {
 				c.par[0] == '#'  ? c.par : c.nick, owner);
 	} else if (!strcmp(c.mask, owner)) {
 		if (strlen(c.msg) > 3 && !strncmp("!j", c.msg, 2)) {
-			if (c.msg[3] == '#')
-				sendf(srv, "JOIN %s", c.msg + 3);
-			else {
-				channel = emalloc(strlen(c.msg + 3) + 1);
-				sprintf(channel, "#%s", c.msg + 3);
-				sendf(srv, "JOIN %s", channel);
-				free(channel);
-			}
+			joinpart(srv, c.msg + 3, true);
 		} else if (strlen(c.msg) > 1 && !strncmp("!p", c.msg, 2)) {
 			if (c.par[0] == '#')
 				sendf(srv, "PART %s", c.par);
 		} else if (strlen(c.msg) > 3 && !strncmp("!p ", c.msg, 3)) {
-			if (c.msg[3] == '#')
-				sendf(srv, "PART %s", c.msg + 3);
-			else {
-				channel = emalloc(strlen(c.msg + 3) + 1);
-				sprintf(channel, "#%s", c.msg + 3);
-				sendf(srv, "PART %s", channel);
-				free(channel);
-			}
+			joinpart(srv, c.msg + 3, false);
 		}
 	}
 }
@@ -141,6 +149,24 @@ void urljobs(FILE *srv, struct command c) {
 	}
 }
 
+void autojoin(FILE *srv) {
+	char *rest = "1";
+
+	while (1) {
+		rest = skip(channels, ' ');
+		printf("channels:%s rest:%s\n", channels, rest);
+
+		if (channels[0] == '\0') {
+			channels = NULL;
+			break;
+		}
+
+		joinpart(srv, channels, true);
+
+		channels = rest;
+	}
+}
+
 void parseline(FILE *srv, char *line) {
 	struct command c;
 	time_t t;
@@ -166,6 +192,12 @@ void parseline(FILE *srv, char *line) {
 	if (!strcmp("PING", c.cmd))
 		sendf(srv, "PONG %s", c.msg);
 
+	if (!strcmp("MODE", c.cmd))
+		connected = 1;
+
+	if (channels && connected)
+		autojoin(srv);
+
 	corejobs(srv, c);
 
 	urljobs(srv, c);
@@ -187,11 +219,12 @@ int main(int argc, char **argv) {
 					"-h    help\n"
 					"-v    version\n"
 					"\n"
-					"-s <host>     server hostname\n"
-					"-p <port>     server port\n"
-					"-n <nick>     bot nickname\n"
-					"-u <name>     bot username\n"
-					"-o <owner>    bot owner\n"
+					"-s <host>        server hostname\n"
+					"-p <port>        server port\n"
+					"-n <nick>        bot nickname\n"
+					"-u <name>        bot username\n"
+					"-o <owner>       bot owner\n"
+					"-c <channels>    autojoin channels\n"
 					, argv[0]);
 		else if (!strcmp("-s", argv[i]))
 			host = argv[++i];
@@ -203,10 +236,14 @@ int main(int argc, char **argv) {
 			name = argv[++i];
 		else if (!strcmp("-o", argv[i]))
 			owner = argv[++i];
+		else if (!strcmp("-c", argv[i]))
+			channels = argv[++i];
 	}
 
-	if (!host || !port)
-		eprintf("you need to specify host and port\n");
+	if (!port)
+		port = "6667";
+	if (!host)
+		eprintf("you need to specify host\n");
 	if (!nick || !name)
 		eprintf("you need to specify nick and name\n");
 	if (!owner)
