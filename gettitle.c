@@ -63,7 +63,7 @@ char *strrep(const char *str, const char *old, const char *new) {
 		for (p = str; (p2 = strstr(p, old)); p = p2 + oldlen)
 			retlen += newlen - oldlen;
 
-	ret = malloc(retlen + 1);
+	ret = emalloc(retlen + 1);
 
 	for (p = str, r = ret; (p2 = strstr(p, old)); p = p2 + oldlen) {
 		sharedlen = p2 - p;

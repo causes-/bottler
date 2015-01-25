@@ -5,17 +5,11 @@
 #include <jansson.h>
 #include <curl/curl.h>
 
+#include "util.h"
+
 #define BUFFER_SIZE  (1024 * 1024)  /* 1024 KB */
 
 char *url = "http://www.w3.org/html/wg/drafts/html/master/entities.json";
-
-void eprintf(const char *fmt, ...) {
-	va_list ap;
-	va_start(ap, fmt);
-	vfprintf(stderr, fmt, ap);
-	va_end(ap);
-	exit(EXIT_FAILURE);
-}
 
 struct write_result {
 	char *data;
@@ -85,7 +79,7 @@ char *strrep(const char *str, const char *old, const char *new) {
 		for (p = str; (p2 = strstr(p, old)); p = p2 + oldlen)
 			retlen += newlen - oldlen;
 
-	ret = malloc(retlen + 1);
+	ret = emalloc(retlen + 1);
 
 	for (p = str, r = ret; (p2 = strstr(p, old)); p = p2 + oldlen) {
 		sharedlen = p2 - p;

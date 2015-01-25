@@ -16,8 +16,6 @@
 
 #define VERSION "0.2"
 
-bool connected = false;
-
 char *skip(char *s, char c) {
 	if (!s)
 		return NULL;
@@ -95,17 +93,11 @@ void joinpart(FILE *srv, char *chan, bool join) {
 	char *channel;
 
 	if (chan[0] == '#') {
-		if (join)
-			sendf(srv, "JOIN %s", chan);
-		else
-			sendf(srv, "PART %s", chan);
+		sendf(srv, "%s %s", join ? "JOIN" : "PART", chan);
 	} else {
 		channel = emalloc(strlen(chan) + 1);
 		sprintf(channel, "#%s", chan);
-		if (join)
-			sendf(srv, "JOIN %s", channel);
-		else
-			sendf(srv, "PART %s", channel);
+		sendf(srv, "%s %s", join ? "JOIN" : "PART", channel);
 		free(channel);
 	}
 }
@@ -115,9 +107,7 @@ void autojoin(FILE *srv) {
 
 	while (channels) {
 		rest = skip(channels, ' ');
-
 		joinpart(srv, channels, true);
-
 		channels = rest;
 	}
 }
