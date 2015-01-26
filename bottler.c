@@ -27,6 +27,15 @@ struct command {
 
 char *argv0;
 
+int afclose(FILE **stream) {
+	int r;
+
+	r = fclose(*stream);
+	if (r == 0)
+		*stream = NULL;
+	return r;
+}
+
 char *skip(char *s, char c) {
 	if (!s)
 		return NULL;
@@ -144,7 +153,7 @@ void corejobs(FILE *srv, struct command c) {
 		break;
 	}
 
-	if (!owner || !!strcmp(c.mask, owner))
+	if (!owner || !!strcmp(c.mask, owner) || strlen(c.msg) < 4)
 		return;
 
 	switch (c.msg[1]) {
@@ -299,8 +308,7 @@ int main(int argc, char **argv) {
 				if (!fgets(buf, sizeof buf, srv)) {
 					fprintf(stderr, "Host closed connection.\n");
 					fprintf(stderr, "Retrying in 15 seconds...\n");
-					fclose(srv);
-					srv = NULL;
+					afclose(&srv);
 					sleep(15);
 					continue;
 				}
@@ -312,7 +320,7 @@ int main(int argc, char **argv) {
 	}
 
 	sendf(srv, "QUIT :Terminating");
-	fclose(srv);
+	afclose(&srv);
 	close(fd);
 	return EXIT_SUCCESS;
 }
