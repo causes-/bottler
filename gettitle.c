@@ -95,32 +95,32 @@ static char *replacehtmlentities(char *str) {
 
 char *gettitle(char *url) {
 	char *title = NULL;
-	CURL *curl_handle;
+	CURL *curl;
 	CURLcode res;
-
 	struct htmldata data;
 
 	data.memory = malloc(1);
 	data.size = 0;
 
 	curl_global_init(CURL_GLOBAL_ALL);
-	curl_handle = curl_easy_init();
+	curl = curl_easy_init();
 
-	/* specify URL to get */ 
-	curl_easy_setopt(curl_handle, CURLOPT_URL, url);
-	/* send all data to this function  */ 
-	curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, curlcallback);
-	/* we pass our 'data' struct to the callback function */ 
-	curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)&data);
-	curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
-	res = curl_easy_perform(curl_handle);
+	// specify URL to get
+	curl_easy_setopt(curl, CURLOPT_URL, url);
+	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+	curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "gzip");
+	curl_easy_setopt(curl, CURLOPT_USERAGENT, "libcurl-agent/1.0");
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curlcallback);
+	curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&data);
+	res = curl_easy_perform(curl);
 
 	if (res != CURLE_OK)
 		fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
 	else
 		title = getxmlstr(data.memory, "title");
 
-	curl_easy_cleanup(curl_handle);
+	curl_easy_cleanup(curl);
 	if (data.memory)
 		free(data.memory);
 	curl_global_cleanup();
