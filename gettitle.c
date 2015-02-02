@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stddef.h>
 #include <string.h>
+#include <ctype.h>
 #include <curl/curl.h>
 
 #include "util.h"
@@ -26,6 +27,10 @@ static char *getxmlstr(char *s, char *t) {
 		t = strcasestr(s, e);
 		if (t) {
 			*t = '\0';
+			while (isspace(*--t))
+				*t = '\0';
+			while (isspace(*s))
+				s++;
 			s = estrdup(s);
 		} else
 			s = NULL;
@@ -34,19 +39,6 @@ static char *getxmlstr(char *s, char *t) {
 	free(b);
 	free(e);
 	return s;
-}
-
-static size_t curlcallback(void *contents, size_t size, size_t nmemb, void *userp) {
-	size_t realsize = size * nmemb;
-	struct htmldata *mem = (struct htmldata *) userp;
-
-	mem->memory = erealloc(mem->memory, mem->size + realsize + 1);
-
-	memcpy(&(mem->memory[mem->size]), contents, realsize);
-	mem->size += realsize;
-	mem->memory[mem->size] = 0;
-
-	return realsize;
 }
 
 char *strrep(const char *str, const char *old, const char *new) {
@@ -85,12 +77,24 @@ static char *replacehtmlentities(char *str) {
 
 	for (i = 0; entities[i].entity; i++) {
 		tmp = strrep(tmp2, entities[i].entity, entities[i].substitute);
-		if (i)
-			free(tmp2);
+		free(tmp2);
 		tmp2 = tmp;
 	}
 
 	return tmp2;
+}
+
+static size_t curlcallback(void *contents, size_t size, size_t nmemb, void *userp) {
+	size_t realsize = size * nmemb;
+	struct htmldata *mem = (struct htmldata *) userp;
+
+	mem->memory = erealloc(mem->memory, mem->size + realsize + 1);
+
+	memcpy(&(mem->memory[mem->size]), contents, realsize);
+	mem->size += realsize;
+	mem->memory[mem->size] = 0;
+
+	return realsize;
 }
 
 char *gettitle(char *url) {
@@ -116,7 +120,7 @@ char *gettitle(char *url) {
 	res = curl_easy_perform(curl);
 
 	if (res != CURLE_OK)
-		fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+		fprintf(stderr, "curl_easy_perform(): %s\n", curl_easy_strerror(res));
 	else
 		title = getxmlstr(data.memory, "title");
 
