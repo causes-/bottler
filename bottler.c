@@ -211,6 +211,11 @@ void parseline(FILE *srv, char *line) {
 	c.msg = skip(c.par, ':');
 	trim(c.par);
 
+	if (c.cmd && !strcmp("433", c.cmd)) {
+		sendf(srv, "NICK %s-", nick);
+		sendf(srv, "USER %s- 0 * :%s", nick, name);
+	}
+
 	if (c.cmd && c.nick && channels && !strcmp("MODE", c.cmd) && !strcmp(nick, c.nick))
 		autojoin(srv);
 
