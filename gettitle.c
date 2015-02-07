@@ -72,16 +72,19 @@ char *strrep(const char *str, const char *old, const char *new) {
 
 static char *replacehtmlentities(char *str) {
 	int i;
-	char *tmp = NULL;
-	char *tmp2 = str;
+	char *p, *p2;
 
-	for (i = 0; entities[i].entity; i++) {
-		tmp = strrep(tmp2, entities[i].entity, entities[i].substitute);
-		free(tmp2);
-		tmp2 = tmp;
+	for (p = str; *p != '\0' && *p != '&'; p++);
+	if (*p != '&')
+		return str;
+
+	for (i = 0, p2 = str; entities[i].entity; i++) {
+		p = strrep(p2, entities[i].entity, entities[i].substitute);
+		free(p2);
+		p2 = p;
 	}
 
-	return tmp2;
+	return p2;
 }
 
 static size_t curlcallback(void *contents, size_t size, size_t nmemb, void *userp) {
@@ -92,7 +95,7 @@ static size_t curlcallback(void *contents, size_t size, size_t nmemb, void *user
 
 	memcpy(&(mem->memory[mem->size]), contents, realsize);
 	mem->size += realsize;
-	mem->memory[mem->size] = 0;
+	mem->memory[mem->size] = '\0';
 
 	return realsize;
 }
@@ -103,7 +106,7 @@ char *gettitle(char *url) {
 	CURLcode res;
 	struct htmldata data;
 
-	data.memory = malloc(1);
+	data.memory = NULL;
 	data.size = 0;
 
 	curl_global_init(CURL_GLOBAL_ALL);

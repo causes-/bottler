@@ -40,3 +40,12 @@ void *estrdup(void *p) {
 		eprintf("out of memory\n");
 	return r;
 }
+
+int afclose(FILE **stream) {
+	int r;
+
+	r = fclose(*stream);
+	if (r == 0)
+		*stream = NULL;
+	return r;
+}

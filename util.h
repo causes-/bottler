@@ -9,4 +9,6 @@ void *erealloc(void *p, size_t size);
 
 void *estrdup(void *p);
 
+int afclose(FILE **stream);
+
 #endif

@@ -17,38 +17,18 @@
 
 #define VERSION "0.2"
 
-struct command {
-	char *nick;
-	char *mask;
-	char *cmd;
-	char *par;
-	char *msg;
-};
-
 char *argv0;
 
-int afclose(FILE **stream) {
-	int r;
-
-	r = fclose(*stream);
-	if (r == 0)
-		*stream = NULL;
-	return r;
-}
-
-char *skip(char *s, char c) {
+char *split(char *s, char c) {
 	if (!s)
 		return NULL;
-
 	while (*s != c && *s != '\0')
 		s++;
-
 	if (*s == '\0')
 		return NULL;
-	else
-		*s = '\0';
+	*s = '\0';
 
-	return ++s;
+	return s + 1;
 }
 
 void trim(char *s) {
@@ -56,14 +36,13 @@ void trim(char *s) {
 
 	if (!s)
 		return;
-
 	e = s + strlen(s) - 1;
-
 	while (isspace(*e) && e > s)
 		e--;
 
 	*(e + 1) = '\0';
 }
+
 
 int dial(const char *host, const char *port) {
 	int fd;
@@ -126,63 +105,63 @@ void autojoin(FILE *srv) {
 	chanlist = estrdup(channels);
 
 	for (p = chanlist; p; p = p2) {
-		p2 = skip(p, ' ');
+		p2 = split(p, ' ');
 		joinpart(srv, p, true);
 	}
 
 	free(chanlist);
 }
 
-void corejobs(FILE *srv, struct command c) {
-	if (!strncmp(nick, c.msg, strlen(nick)))
-		sendf(srv, "PRIVMSG %s :Try !h for help", *c.par == '#'  ? c.par : c.nick);
+void corejobs(FILE *srv, char *nick, char *mask, char *par, char *msg) {
+	if (!strncmp(nick, msg, strlen(nick)))
+		sendf(srv, "PRIVMSG %s :Try !h for help", *par == '#'  ? par : nick);
 
-	if (c.msg[0] != '!')
+	if (msg[0] != '!')
 		return;
 
-	switch (c.msg[1]) {
+	switch (msg[1]) {
 	case 'h':
 		sendf(srv, "PRIVMSG %s :Usage: !h help, !v version, !o owner, !j join, !p part",
-				*c.par == '#'  ? c.par : c.nick);
+				*par == '#'  ? par : nick);
 		break;
 	case 'v':
-		sendf(srv, "PRIVMSG %s :Bottler IRC-bot %s", *c.par == '#'  ? c.par : c.nick, VERSION);
+		sendf(srv, "PRIVMSG %s :Bottler IRC-bot %s", *par == '#'  ? par : nick, VERSION);
 		break;
 	case 'o':
-		sendf(srv, "PRIVMSG %s :My owner: %s", *c.par == '#'  ? c.par : c.nick, owner);
+		sendf(srv, "PRIVMSG %s :My owner: %s", *par == '#'  ? par : nick, owner);
 		break;
 	}
 
-	if (!owner || !!strcmp(c.mask, owner) || strlen(c.msg) < 4)
+	if (!owner || !!strcmp(mask, owner) || strlen(msg) < 4)
 		return;
 
-	switch (c.msg[1]) {
+	switch (msg[1]) {
 	case 'j':
-		joinpart(srv, c.msg + 3, true);
+		joinpart(srv, msg + 3, true);
 		break;
 	case 'p':
-		joinpart(srv, c.msg + 3, false);
+		joinpart(srv, msg + 3, false);
 		break;
 	}
 }
 
-void urljobs(FILE *srv, struct command c) {
+void urljobs(FILE *srv, char *par, char *msg) {
 	char *url;
 	char *title;
 
-	if (c.par[0] == '#') {
-		url = strcasestr(c.msg, "http://");
+	if (par[0] == '#') {
+		url = strcasestr(msg, "http://");
 		if (!url)
-			url = strcasestr(c.msg, "https://");
+			url = strcasestr(msg, "https://");
 		if (!url)
-			url = strcasestr(c.msg, "www.");
+			url = strcasestr(msg, "www.");
 		if (url) {
 			url = estrdup(url);
-			skip(url, ' ');
+			split(url, ' ');
 			trim(url);
 			title = gettitle(url);
 			if (title) {
-				sendf(srv, "PRIVMSG %s :%s", c.par, title);
+				sendf(srv, "PRIVMSG %s :%s", par, title);
 				free(title);
 			}
 			free(url);
@@ -191,40 +170,39 @@ void urljobs(FILE *srv, struct command c) {
 }
 
 void parseline(FILE *srv, char *line) {
-	struct command c;
 	time_t t;
 	struct tm *tm;
+	char *nick, *mask, *cmd, *par, *msg;
 
 	t = time(NULL);
 	tm = localtime(&t);
-	skip(line, '\r');
+	split(line, '\r');
 	printf("[%.2d:%.2d:%.2d] >%s\n", tm->tm_hour, tm->tm_min, tm->tm_sec, line);
 
-	memset(&c, 0, sizeof c);
-	c.cmd = line;
-	if (*c.cmd == ':') {
-		c.nick = c.cmd+1;
-		c.cmd = skip(c.nick, ' ');
-		c.mask = skip(c.nick, '!');
+	cmd = line;
+	mask = NULL;
+	if (cmd[0] == ':') {
+		nick = cmd + 1;
+		cmd = split(nick, ' ');
+		mask = split(nick, '!');
 	}
-	c.par = skip(c.cmd, ' ');
-	c.msg = skip(c.par, ':');
-	trim(c.par);
+	par = split(cmd, ' ');
+	msg = split(par, ':');
 
-	if (c.cmd && !strcmp("433", c.cmd)) {
+	if (cmd && !strcmp("433", cmd)) {
 		sendf(srv, "NICK %s-", nick);
 		sendf(srv, "USER %s- 0 * :%s", nick, name);
 	}
 
-	if (c.cmd && c.nick && channels && !strcmp("MODE", c.cmd) && !strcmp(nick, c.nick))
+	if (cmd && channels && (!strcmp("376", cmd) || !strcmp("422", cmd)))
 		autojoin(srv);
 
-	if (c.cmd && c.msg && !strcmp("PING", c.cmd))
-		sendf(srv, "PONG %s", c.msg);
+	if (cmd && msg && !strcmp("PING", cmd))
+		sendf(srv, "PONG %s", msg);
 
-	if (c.nick && c.mask && c.cmd && c.par && c.msg) {
-		corejobs(srv, c);
-		urljobs(srv, c);
+	if (nick && mask && par && msg) {
+		corejobs(srv, nick, mask, par, msg);
+		urljobs(srv, par, msg);
 	}
 }
 
@@ -283,7 +261,7 @@ int main(int argc, char **argv) {
 	if (!nick)
 		eprintf("you need to specify nick\n");
 
-	while (1) {
+	while (true) {
 		if (!srv) {
 			close(fd);
 			fd = dial(host, port);
