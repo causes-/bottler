@@ -248,8 +248,8 @@ int main(int argc, char **argv) {
 			fd = dial(host, port);
 			if (fd == -1) {
 				fprintf(stderr, "Failed to connect to %s:%s.\n", host, port);
-				fprintf(stderr, "Retrying in 15 seconds...\n");
-				sleep(15);
+				fprintf(stderr, "Retrying in 120 seconds...\n");
+				sleep(120);
 				continue;
 			} else {
 				printf("connected to %s:%s\n", host, port);
@@ -271,9 +271,9 @@ int main(int argc, char **argv) {
 			if (FD_ISSET(fileno(srv), &readfds)) {
 				if (!fgets(buf, sizeof buf, srv)) {
 					fprintf(stderr, "Host closed connection.\n");
-					fprintf(stderr, "Retrying in 15 seconds...\n");
+					fprintf(stderr, "Retrying in 30 seconds...\n");
 					afclose(&srv);
-					sleep(15);
+					sleep(30);
 					continue;
 				}
 				parseline(srv, buf);
