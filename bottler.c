@@ -133,7 +133,6 @@ void urljobs(FILE *srv, char *par, char *msg) {
 		if (url) {
 			url = estrdup(url);
 			url = strsep(&url, " \r\n");
-			printf("'%s'\n", url);
 			title = gettitle(url);
 			if (title) {
 				sendf(srv, "PRIVMSG %s :%s", par, title);
@@ -172,8 +171,8 @@ void parseline(FILE *srv, char *line) {
 			tm->tm_hour, tm->tm_min, tm->tm_sec, nick, mask, cmd, par, msg);
 
 	if (cmd && !strcmp("433", cmd)) {
-		sendf(srv, "NICK %s-", nick);
-		sendf(srv, "USER %s- 0 * :%s", nick, name);
+		sendf(srv, "NICK %s-", botnick);
+		sendf(srv, "USER %s- 0 * :%s", botnick, botname);
 	}
 
 	if (cmd && channels && (!strcmp("376", cmd) || !strcmp("422", cmd)))
@@ -219,10 +218,10 @@ int main(int argc, char **argv) {
 		port = EARGF(usage());
 		break;
 	case 'n':
-		nick = EARGF(usage());
+		botnick = EARGF(usage());
 		break;
 	case 'u':
-		name = EARGF(usage());
+		botname = EARGF(usage());
 		break;
 	case 'o':
 		owner = EARGF(usage());
@@ -236,11 +235,11 @@ int main(int argc, char **argv) {
 
 	if (!port)
 		port = "6667";
-	if (!name)
-		name = "Bottler IRC-bot " VERSION;
+	if (!botname)
+		botname = "Bottler IRC-bot " VERSION;
 	if (!host)
 		eprintf("you need to specify host\n");
-	if (!nick)
+	if (!botnick)
 		eprintf("you need to specify nick\n");
 
 	while (true) {
@@ -258,8 +257,8 @@ int main(int argc, char **argv) {
 
 			srv = fdopen(fd, "r+");
 
-			sendf(srv, "NICK %s", nick);
-			sendf(srv, "USER %s 0 * :%s", nick, name);
+			sendf(srv, "NICK %s", botnick);
+			sendf(srv, "USER %s 0 * :%s", botnick, botname);
 
 			fflush(srv);
 			setbuf(srv, NULL);

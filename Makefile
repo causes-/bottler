@@ -1,9 +1,10 @@
-CFLAGS+=-std=c99 -pedantic -Wall -Wextra
-LDLIBS=-lcurl
+CFLAGS += -std=c99 -pedantic -Wall -Wextra
+LDLIBS = -lcurl
+PREFIX = /usr/local
 
-BIN=bottler
-OBJ=util.o gettitle.o bottler.o
-CFG=config.h
+BIN = bottler
+OBJ = util.o gettitle.o bottler.o
+CFG = config.h
 
 $(BIN): $(OBJ)
 
@@ -21,8 +22,8 @@ distclean:
 	rm -f $(BIN) $(OBJ) $(CFG)
 
 install: all
-	mkdir -p $(DESTDIR)/usr/bin
-	install -m 755 $(BIN) $(DESTDIR)/usr/bin/
+	mkdir -p $(DESTDIR)$(PREFIX)/bin
+	cp -f $(BIN) $(DESTDIR)$(PREFIX)/bin/
 
 uninstall:
-	rm -f $(DESTDIR)/usr/bin/$(BIN)
+	rm -f $(DESTDIR)$(PREFIX)/bin/$(BIN)

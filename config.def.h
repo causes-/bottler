@@ -8,10 +8,10 @@ char *host = NULL;
 char *port = NULL;
 
 // bot nickname
-char *nick = NULL;
+char *botnick = NULL;
 
 // bot username
-char *name = NULL;
+char *botname = NULL;
 
 // bot owner
 char *owner = NULL;
