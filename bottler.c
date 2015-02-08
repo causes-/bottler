@@ -19,31 +19,6 @@
 
 char *argv0;
 
-char *split(char *s, char c) {
-	if (!s)
-		return NULL;
-	while (*s != c && *s != '\0')
-		s++;
-	if (*s == '\0')
-		return NULL;
-	*s = '\0';
-
-	return s + 1;
-}
-
-void trim(char *s) {
-	char *e;
-
-	if (!s)
-		return;
-	e = s + strlen(s) - 1;
-	while (isspace(*e) && e > s)
-		e--;
-
-	*(e + 1) = '\0';
-}
-
-
 int dial(const char *host, const char *port) {
 	int fd;
 	struct addrinfo hints, *res, *r;
@@ -81,7 +56,7 @@ int sendf(FILE *srv, char *fmt, ...) {
 
 	t = time(NULL);
 	tm = localtime(&t);
-	printf("[%.2d:%.2d:%.2d] <%s\n", tm->tm_hour, tm->tm_min, tm->tm_sec, buf);
+	printf("%.2d:%.2d:%.2d %s\n", tm->tm_hour, tm->tm_min, tm->tm_sec, buf);
 
 	return fprintf(srv, "%s\r\n", buf);
 }
@@ -100,12 +75,12 @@ void joinpart(FILE *srv, char *chan, bool join) {
 }
 
 void autojoin(FILE *srv) {
-	char *chanlist, *p, *p2;
+	char *chanlist, *p;
 
 	chanlist = estrdup(channels);
 
-	for (p = chanlist; p; p = p2) {
-		p2 = split(p, ' ');
+	while (chanlist) {
+		p = strsep(&chanlist, " ");
 		joinpart(srv, p, true);
 	}
 
@@ -157,8 +132,8 @@ void urljobs(FILE *srv, char *par, char *msg) {
 			url = strcasestr(msg, "www.");
 		if (url) {
 			url = estrdup(url);
-			split(url, ' ');
-			trim(url);
+			url = strsep(&url, " \r\n");
+			printf("'%s'\n", url);
 			title = gettitle(url);
 			if (title) {
 				sendf(srv, "PRIVMSG %s :%s", par, title);
@@ -174,20 +149,27 @@ void parseline(FILE *srv, char *line) {
 	struct tm *tm;
 	char *nick, *mask, *cmd, *par, *msg;
 
+	if (line[0] == ':') {
+		line++;
+		nick = strsep(&line, " ");
+		mask = strsep(&nick, "!");
+		cmd = strsep(&line, " ");
+		par = strsep(&line, ":");
+		msg = strsep(&line, "\r\n");
+	} else {
+		nick = NULL;
+		mask = NULL;
+		cmd = strsep(&line, " ");
+		par = strsep(&line, ":");
+		msg = strsep(&line, "\r\n");
+	}
+	if (par)
+		par[strlen(par) - 1] = '\0';
+
 	t = time(NULL);
 	tm = localtime(&t);
-	split(line, '\r');
-	printf("[%.2d:%.2d:%.2d] >%s\n", tm->tm_hour, tm->tm_min, tm->tm_sec, line);
-
-	cmd = line;
-	mask = NULL;
-	if (cmd[0] == ':') {
-		nick = cmd + 1;
-		cmd = split(nick, ' ');
-		mask = split(nick, '!');
-	}
-	par = split(cmd, ' ');
-	msg = split(par, ':');
+	printf("%.2d:%.2d:%.2d n:%s m:%s c:%s p:%s m:%s\n",
+			tm->tm_hour, tm->tm_min, tm->tm_sec, nick, mask, cmd, par, msg);
 
 	if (cmd && !strcmp("433", cmd)) {
 		sendf(srv, "NICK %s-", nick);
