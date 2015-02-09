@@ -5,7 +5,7 @@
 #include <jansson.h>
 #include <curl/curl.h>
 
-#include "util.h"
+#include "../util.h"
 
 #define BUFFER_SIZE  (1024 * 1024)  /* 1024 KB */
 

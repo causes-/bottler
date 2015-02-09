@@ -11,36 +11,6 @@
 #include "gettitle.h"
 #include "htmlentities.h"
 
-static char *getxmlstr(char *s, char *t) {
-	char *b = emalloc(strlen(t) + 3);
-	char *e = emalloc(strlen(t) + 4);
-
-	sprintf(b, "<%s>", t);
-	sprintf(e, "</%s>", t);
-
-	if (strlen(s) < (strlen(b)+strlen(e)+1))
-		return NULL;
-
-	s = strcasestr(s, b);
-	if (s) {
-		s += strlen(b);
-		t = strcasestr(s, e);
-		if (t) {
-			*t = '\0';
-			while (isspace(*--t))
-				*t = '\0';
-			while (isspace(*s))
-				s++;
-			s = estrdup(s);
-		} else
-			s = NULL;
-	}
-
-	free(b);
-	free(e);
-	return s;
-}
-
 char *strrep(const char *str, const char *old, const char *new) {
 	size_t oldlen, newlen, retlen;
 	ptrdiff_t sharedlen;
@@ -68,6 +38,38 @@ char *strrep(const char *str, const char *old, const char *new) {
 	strcpy(r, p);
 
 	return ret;
+}
+
+char *getxmlstr(char *s, char *t) {
+	char *open, *close;
+
+	open = emalloc(strlen(t) + 3);
+	close = emalloc(strlen(t) + 4);
+	sprintf(open, "<%s>", t);
+	sprintf(close, "</%s>", t);
+
+	if (strlen(s) < (strlen(open) + strlen(close) + 1))
+		return NULL;
+
+	s = strcasestr(s, open);
+	if (s) {
+		s += strlen(open);
+		t = strcasestr(s, close);
+		if (t) {
+			while (isspace(t[-1]))
+				t--;
+			*t = '\0';
+			while (isspace(*s))
+				s++;
+			s = strrep(s, "\n", "");
+		} else {
+			s = NULL;
+		}
+	}
+
+	free(open);
+	free(close);
+	return s;
 }
 
 static char *replacehtmlentities(char *str) {
