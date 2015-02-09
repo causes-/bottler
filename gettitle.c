@@ -77,15 +77,16 @@ static char *replacehtmlentities(char *str) {
 	for (p = str; *p && *p != '&'; p++);
 	if (*p == '&') {
 		for (; *p && *p != ';' && !isspace(*p); p++);
-		if (*p == ';')
+		if (*p == ';') {
 			for (i = 0, p2 = str; entities[i].entity; i++) {
 				p = strrep(p2, entities[i].entity, entities[i].substitute);
 				free(p2);
 				p2 = p;
 			}
+			return p2;
+		}
 	}
-
-	return p2;
+	return str;
 }
 
 static size_t curlcallback(void *contents, size_t size, size_t nmemb, void *userp) {

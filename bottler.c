@@ -67,7 +67,7 @@ void joinpart(FILE *srv, char *chan, bool join) {
 	if (chan[0] == '#') {
 		sendf(srv, "%s %s", join ? "JOIN" : "PART", chan);
 	} else {
-		channel = emalloc(strlen(chan) + 1);
+		channel = emalloc(strlen(chan) + 2);
 		sprintf(channel, "#%s", chan);
 		sendf(srv, "%s %s", join ? "JOIN" : "PART", channel);
 		free(channel);
